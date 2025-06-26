@@ -425,8 +425,8 @@
                 type="text"
                 id="app1Name"
                 name="app1Name"
-                value="app-reg-1"
-                placeholder="app-reg-1"
+                value="mahi-app-connector"
+                placeholder="mahi-app-connector"
               />
               <div class="help-text">
                 Suffix for first app registration (Web App with user.read scope)
@@ -452,8 +452,8 @@
                 type="text"
                 id="app2Name"
                 name="app2Name"
-                value="app-reg-2"
-                placeholder="app-reg-2"
+                value="mahi-api-access"
+                placeholder="mahi-api-access"
               />
               <div class="help-text">
                 Suffix for second app registration (Web App with api.access
@@ -480,8 +480,8 @@
                 type="text"
                 id="app3Name"
                 name="app3Name"
-                value="app-reg-3"
-                placeholder="app-reg-3"
+                value="mahi-teams-app"
+                placeholder="mahi-teams-app"
               />
               <div class="help-text">
                 Suffix for third app registration (SPA with resource.manage
@@ -657,11 +657,11 @@
           document.getElementById("environment").value || "dev";
 
         const app1Name =
-          document.getElementById("app1Name").value || "app-reg-1";
+          document.getElementById("app1Name").value || "mahi-app-connector";
         const app2Name =
-          document.getElementById("app2Name").value || "app-reg-2";
+          document.getElementById("app2Name").value || "mahi-api-access";
         const app3Name =
-          document.getElementById("app3Name").value || "app-reg-3";
+          document.getElementById("app3Name").value || "mahi-teams-app";
 
         // Update redirect URIs if they're empty or match the pattern
         const app1RedirectUri = document.getElementById("app1RedirectUri");

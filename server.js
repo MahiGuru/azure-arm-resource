@@ -1,4 +1,3 @@
-// server.js - Final Complete Version with All Features
 const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
@@ -75,19 +74,19 @@ const provisioningSchema = Joi.object({
     .min(1)
     .max(50)
     .pattern(/^[a-zA-Z0-9-_]+$/)
-    .default("app-reg-1"),
+    .default("mahi-app-connector"),
   app1RedirectUri: Joi.string().uri().optional(),
   app2Name: Joi.string()
     .min(1)
     .max(50)
     .pattern(/^[a-zA-Z0-9-_]+$/)
-    .default("app-reg-2"),
+    .default("mahi-api-access"),
   app2RedirectUri: Joi.string().uri().optional(),
   app3Name: Joi.string()
     .min(1)
     .max(50)
     .pattern(/^[a-zA-Z0-9-_]+$/)
-    .default("app-reg-3"),
+    .default("mahi-teams-app"),
   app3RedirectUri: Joi.string().uri().optional(),
   enableCrossPermissions: Joi.string()
     .valid("true", "false")
@@ -97,18 +96,22 @@ const provisioningSchema = Joi.object({
     .valid("true", "false")
     .default("true")
     .custom((value) => value === "true"),
+  grantAdminConsent: Joi.string()
+    .valid("true", "false")
+    .default("true")
+    .custom((value) => value === "true"),
 
   // Enterprise Application Configuration
   enterprise1Name: Joi.string()
     .min(1)
     .max(50)
     .pattern(/^[a-zA-Z0-9-_]+$/)
-    .default("enterprise-app-1"),
+    .default("entra-proxy-app-saml"),
   enterprise2Name: Joi.string()
     .min(1)
     .max(50)
     .pattern(/^[a-zA-Z0-9-_]+$/)
-    .default("enterprise-app-2"),
+    .default("chat-proxy-app"),
 
   // Application Proxy Configuration
   internalUrl1: Joi.string().uri().optional(),
@@ -191,7 +194,7 @@ class AzureResourceManager {
   }
 }
 
-// Graph API Service class with complete functionality
+// Enhanced Graph API Service class with API permissions and admin consent
 class GraphApiService {
   constructor() {
     this.accessToken = null;
@@ -253,6 +256,26 @@ class GraphApiService {
     }
   }
 
+  // Get specific Microsoft Graph API permissions for App Registration 1
+  getApp1Permissions() {
+    return [
+      {
+        resourceAppId: "00000003-0000-0000-c000-000000000000", // Microsoft Graph
+        resourceAccess: [
+          { id: "9e3f62cf-ca93-4989-b6ce-bf83c28f9fe8", type: "Role" }, // RoleManagement.ReadWrite.Directory
+          { id: "c79f8feb-a9db-4090-85f9-90d820caa0eb", type: "Role" }, // Organization.Read.All
+          { id: "09850681-111b-4a89-9bed-3f2cae46d706", type: "Role" }, // User.Invite.All
+          { id: "6e472fd1-ad78-48da-a0f0-97ab2c6b769e", type: "Role" }, // IdentityRiskEvent.Read.All
+          { id: "df021288-bdef-4463-88db-98f22de89214", type: "Role" }, // User.Read.All
+          { id: "5b567255-7703-4780-807c-7be8301ae99b", type: "Role" }, // Group.Read.All
+          { id: "62a82d76-70ea-41e2-9197-370581804d09", type: "Role" }, // Group.ReadWrite.All
+          { id: "9a5d68dd-52b0-4cc2-bd40-abcf44ac3a30", type: "Role" }, // Application.Read.All
+          { id: "e1fe6dd8-ba31-4d61-89e7-88639da4683d", type: "Scope" }, // User.Read (delegated)
+        ],
+      },
+    ];
+  }
+
   async createAppRegistration(config) {
     try {
       // Check if application already exists
@@ -296,24 +319,14 @@ class GraphApiService {
           redirectUris: config.redirectUris,
           type: config.type,
           isExisting: true,
+          adminConsentGranted: false, // Assume not granted for existing apps
         };
       }
 
-      // Create new application
+      // Create new application with specific permissions based on app registration number
       const applicationData = {
         displayName: config.name,
         signInAudience: "AzureADMyOrg",
-        requiredResourceAccess: [
-          {
-            resourceAppId: "00000003-0000-0000-c000-000000000000",
-            resourceAccess: [
-              {
-                id: "e1fe6dd8-ba31-4d61-89e7-88639da4683d", // User.Read
-                type: "Scope",
-              },
-            ],
-          },
-        ],
         api: {
           requestedAccessTokenVersion: 2,
           oauth2PermissionScopes: config.scopes.map((scope) => ({
@@ -328,6 +341,24 @@ class GraphApiService {
           })),
         },
       };
+
+      // Set specific permissions for App Registration 1
+      if (config.name.includes("app-reg-1")) {
+        applicationData.requiredResourceAccess = this.getApp1Permissions();
+      } else {
+        // Default permissions for other app registrations
+        applicationData.requiredResourceAccess = [
+          {
+            resourceAppId: "00000003-0000-0000-c000-000000000000",
+            resourceAccess: [
+              {
+                id: "e1fe6dd8-ba31-4d61-89e7-88639da4683d", // User.Read
+                type: "Scope",
+              },
+            ],
+          },
+        ];
+      }
 
       // Configure redirect URIs based on app type
       if (config.type === "web") {
@@ -357,6 +388,11 @@ class GraphApiService {
       );
 
       const createdApp = createAppResponse.data;
+
+      // For App Registration 2: Set Application ID URI
+      if (config.name.includes("app-reg-2")) {
+        await this.setApplicationIdUri(createdApp.id, createdApp.appId);
+      }
 
       // Create client secret only if requested
       let clientSecret = null;
@@ -393,6 +429,19 @@ class GraphApiService {
 
       const servicePrincipal = createSpResponse.data;
 
+      // Grant admin consent if requested and permissions exist
+      let adminConsentGranted = false;
+      if (config.grantAdminConsent && applicationData.requiredResourceAccess) {
+        try {
+          adminConsentGranted = await this.grantAdminConsent(
+            servicePrincipal.id,
+            applicationData.requiredResourceAccess
+          );
+        } catch (error) {
+          console.warn(`Could not grant admin consent: ${error.message}`);
+        }
+      }
+
       return {
         appId: createdApp.appId,
         objectId: createdApp.id,
@@ -402,6 +451,10 @@ class GraphApiService {
         redirectUris: config.redirectUris,
         type: config.type,
         isExisting: false,
+        adminConsentGranted,
+        applicationIdUri: config.name.includes("app-reg-2")
+          ? `api://${createdApp.appId}/api`
+          : null,
       };
     } catch (error) {
       console.error(
@@ -413,6 +466,101 @@ class GraphApiService {
           error.response?.data?.error?.message || error.message
         }`
       );
+    }
+  }
+
+  async setApplicationIdUri(applicationId, appId) {
+    try {
+      const applicationIdUri = `api://${appId}/api`;
+
+      await axios.patch(
+        `https://graph.microsoft.com/v1.0/applications/${applicationId}`,
+        {
+          identifierUris: [applicationIdUri],
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${this.accessToken}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      console.log(`Set Application ID URI: ${applicationIdUri}`);
+      return applicationIdUri;
+    } catch (error) {
+      console.warn(`Could not set Application ID URI: ${error.message}`);
+      throw error;
+    }
+  }
+
+  async grantAdminConsent(servicePrincipalId, requiredResourceAccess) {
+    try {
+      let consentGranted = false;
+
+      for (const resource of requiredResourceAccess) {
+        for (const permission of resource.resourceAccess) {
+          if (permission.type === "Role") {
+            // Grant application permissions (admin consent required)
+            try {
+              await axios.post(
+                "https://graph.microsoft.com/v1.0/servicePrincipals/" +
+                  servicePrincipalId +
+                  "/appRoleAssignments",
+                {
+                  principalId: servicePrincipalId,
+                  resourceId: await this.getServicePrincipalIdByAppId(
+                    resource.resourceAppId
+                  ),
+                  appRoleId: permission.id,
+                },
+                {
+                  headers: {
+                    Authorization: `Bearer ${this.accessToken}`,
+                    "Content-Type": "application/json",
+                  },
+                }
+              );
+              consentGranted = true;
+              console.log(
+                `Granted admin consent for permission: ${permission.id}`
+              );
+            } catch (error) {
+              console.warn(
+                `Could not grant permission ${permission.id}: ${
+                  error.response?.data?.error?.message || error.message
+                }`
+              );
+            }
+          }
+        }
+      }
+
+      return consentGranted;
+    } catch (error) {
+      console.warn(`Admin consent failed: ${error.message}`);
+      return false;
+    }
+  }
+
+  async getServicePrincipalIdByAppId(appId) {
+    try {
+      const response = await axios.get(
+        `https://graph.microsoft.com/v1.0/servicePrincipals?$filter=appId eq '${appId}'`,
+        {
+          headers: {
+            Authorization: `Bearer ${this.accessToken}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (response.data.value.length > 0) {
+        return response.data.value[0].id;
+      }
+      throw new Error(`Service principal not found for appId: ${appId}`);
+    } catch (error) {
+      throw new Error(`Could not find service principal: ${error.message}`);
     }
   }
 
@@ -576,12 +724,123 @@ class GraphApiService {
         "api.access"
       );
 
+      // For App Registration 3: Add web platform and configure to access App Registration 2
+      await this.configureApp3WebPlatform(app3.objectId, app3.redirectUris);
+      await this.addMyApiPermission(
+        app3.objectId,
+        app2.appId,
+        app2.applicationIdUri
+      );
+
       console.log("Cross-application permissions configured successfully");
     } catch (error) {
       console.error("Failed to configure cross permissions:", error.message);
       throw new Error(
         `Failed to configure cross permissions: ${error.message}`
       );
+    }
+  }
+
+  async configureApp3WebPlatform(app3ObjectId, redirectUris) {
+    try {
+      // Get current app configuration
+      const appResponse = await axios.get(
+        `https://graph.microsoft.com/v1.0/applications/${app3ObjectId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${this.accessToken}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      const app = appResponse.data;
+
+      // Add web platform if not already exists
+      const webConfig = {
+        web: {
+          redirectUris: redirectUris || [],
+          implicitGrantSettings: {
+            enableIdTokenIssuance: true,
+            enableAccessTokenIssuance: false,
+          },
+        },
+      };
+
+      // Merge with existing SPA configuration
+      if (app.spa && app.spa.redirectUris) {
+        webConfig.spa = app.spa;
+      }
+
+      await axios.patch(
+        `https://graph.microsoft.com/v1.0/applications/${app3ObjectId}`,
+        webConfig,
+        {
+          headers: {
+            Authorization: `Bearer ${this.accessToken}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      console.log("Added web platform to App Registration 3");
+    } catch (error) {
+      console.warn(`Could not add web platform to App3: ${error.message}`);
+    }
+  }
+
+  async addMyApiPermission(sourceAppObjectId, targetAppId, applicationIdUri) {
+    try {
+      // Get current source application
+      const sourceAppResponse = await axios.get(
+        `https://graph.microsoft.com/v1.0/applications/${sourceAppObjectId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${this.accessToken}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      const sourceApp = sourceAppResponse.data;
+      const currentRequiredResourceAccess =
+        sourceApp.requiredResourceAccess || [];
+
+      // Add permission to access App Registration 2's exposed API
+      const newResourceAccess = {
+        resourceAppId: targetAppId,
+        resourceAccess: [
+          {
+            id: this.generateGuid(), // Default scope ID for custom API
+            type: "Scope",
+          },
+        ],
+      };
+
+      // Check if permission already exists
+      const existingResource = currentRequiredResourceAccess.find(
+        (resource) => resource.resourceAppId === targetAppId
+      );
+      if (!existingResource) {
+        currentRequiredResourceAccess.push(newResourceAccess);
+
+        await axios.patch(
+          `https://graph.microsoft.com/v1.0/applications/${sourceAppObjectId}`,
+          { requiredResourceAccess: currentRequiredResourceAccess },
+          {
+            headers: {
+              Authorization: `Bearer ${this.accessToken}`,
+              "Content-Type": "application/json",
+            },
+          }
+        );
+
+        console.log(
+          `Added My API permission from App3 to App2: ${targetAppId}`
+        );
+      }
+    } catch (error) {
+      console.warn(`Could not add My API permission: ${error.message}`);
     }
   }
 
@@ -709,21 +968,23 @@ app.get("/api/health", (req, res) => {
   res.json({
     status: "healthy",
     timestamp: new Date().toISOString(),
-    version: "2.0.0",
+    version: "2.1.0",
     features: [
       "Duplicate Detection and Reuse",
-      "Configurable App Registration Names",
+      "Advanced API Permissions (App Reg 1)",
+      "Application ID URI Configuration (App Reg 2)",
+      "Web Platform & My API Access (App Reg 3)",
+      "Automatic Admin Consent",
       "Custom Redirect URIs",
       "SAML + Proxy Configuration",
       "Cross-Application Permissions",
       "Enhanced Status Reporting",
-      "Domain Verification Fix",
       "Production-Ready Security",
     ],
   });
 });
 
-// Main provisioning endpoint with complete functionality
+// Main provisioning endpoint with enhanced functionality
 app.post(
   "/api/provision",
   validateRequest(provisioningSchema),
@@ -732,10 +993,14 @@ app.post(
     const requestId = uuidv4();
 
     try {
-      log("info", "Starting Azure resource provisioning", {
-        requestId,
-        resourceGroup: req.validatedData.resourceGroupName,
-      });
+      log(
+        "info",
+        "Starting Azure resource provisioning with enhanced API permissions",
+        {
+          requestId,
+          resourceGroup: req.validatedData.resourceGroupName,
+        }
+      );
 
       const {
         tenantId,
@@ -756,6 +1021,7 @@ app.post(
         app3RedirectUri,
         enableCrossPermissions,
         generateSecrets,
+        grantAdminConsent,
 
         // Enterprise Application Configuration
         enterprise1Name,
@@ -805,7 +1071,7 @@ app.post(
         log("error", errorMsg, { requestId });
       }
 
-      // Step 2: Create App Registrations with custom configuration
+      // Step 2: Create App Registrations with enhanced configurations
       const appConfigs = [
         {
           name: `${applicationPrefix}-${environment}-${app1Name}`,
@@ -816,6 +1082,7 @@ app.post(
               `https://${applicationPrefix}-${environment}-app1.azurewebsites.net/signin-oidc`,
           ],
           generateSecret: generateSecrets,
+          grantAdminConsent: grantAdminConsent,
         },
         {
           name: `${applicationPrefix}-${environment}-${app2Name}`,
@@ -826,6 +1093,7 @@ app.post(
               `https://${applicationPrefix}-${environment}-app2.azurewebsites.net/signin-oidc`,
           ],
           generateSecret: generateSecrets,
+          grantAdminConsent: grantAdminConsent,
         },
         {
           name: `${applicationPrefix}-${environment}-${app3Name}`,
@@ -836,6 +1104,7 @@ app.post(
               `https://${applicationPrefix}-${environment}-app3.azurewebsites.net/auth/callback`,
           ],
           generateSecret: generateSecrets,
+          grantAdminConsent: grantAdminConsent,
         },
       ];
 
@@ -851,6 +1120,7 @@ app.post(
             requestId,
             appName: config.name,
             isExisting: appResult.isExisting,
+            adminConsentGranted: appResult.adminConsentGranted,
           });
         } catch (error) {
           const errorMsg = `App Registration ${config.name} failed: ${error.message}`;
@@ -924,7 +1194,7 @@ app.post(
             requestId,
           });
           provisioningResults.warnings.push(
-            "Cross-application permissions configured - admin consent may be required"
+            "Cross-application permissions configured including App3 web platform and My API access"
           );
         } catch (error) {
           const errorMsg = `Cross-application permissions failed: ${error.message}`;
@@ -953,15 +1223,18 @@ app.post(
           "SAML certificates need to be configured manually for Enterprise App 1"
         );
       }
-      provisioningResults.warnings.push(
-        "Admin consent required for API permissions"
-      );
+      if (grantAdminConsent) {
+        provisioningResults.warnings.push(
+          "Admin consent attempted - verify permissions in Azure Portal if needed"
+        );
+      }
 
       const duration = Date.now() - startTime;
 
       res.json({
         success: true,
-        message: "Azure resources provisioned successfully",
+        message:
+          "Azure resources provisioned successfully with enhanced API permissions",
         requestId,
         duration,
         results: provisioningResults,
@@ -985,6 +1258,10 @@ app.post(
             enableCrossPermissions &&
             provisioningResults.appRegistrations.length >= 3,
           clientSecretsGenerated: generateSecrets,
+          adminConsentAttempted: grantAdminConsent,
+          adminConsentSuccessful: provisioningResults.appRegistrations.some(
+            (app) => app.adminConsentGranted
+          ),
           errorsCount: provisioningResults.errors.length,
           warningsCount: provisioningResults.warnings.length,
         },
@@ -1027,14 +1304,14 @@ app.use((req, res) => {
 });
 
 app.listen(port, () => {
-  log("info", "Server started", {
+  log("info", "Enhanced server started with API permissions support", {
     port,
     environment: process.env.NODE_ENV || "development",
   });
-  console.log(`🚀 Azure Provisioner server running on port ${port}`);
+  console.log(`🚀 Enhanced Azure Provisioner server running on port ${port}`);
   console.log(`📱 Open http://localhost:${port} to access the application`);
   console.log(
-    `✨ Features: Duplicate Detection, Custom App Config, SAML+Proxy, Cross-Permissions`
+    `✨ Features: Advanced API Permissions, Admin Consent, Application ID URI, Web Platform Config`
   );
 });
 
