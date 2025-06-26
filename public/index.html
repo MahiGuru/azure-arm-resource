@@ -1,0 +1,1106 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Azure Resource Provisioner</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        padding: 20px;
+      }
+
+      .container {
+        max-width: 1400px;
+        margin: 0 auto;
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        border-radius: 20px;
+        padding: 40px;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+      }
+
+      .header {
+        text-align: center;
+        margin-bottom: 40px;
+      }
+
+      .header h1 {
+        color: #2c3e50;
+        font-size: 2.5rem;
+        margin-bottom: 10px;
+        background: linear-gradient(45deg, #3498db, #9b59b6);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+
+      .header p {
+        color: #7f8c8d;
+        font-size: 1.1rem;
+      }
+
+      .form-section {
+        background: white;
+        border-radius: 15px;
+        padding: 30px;
+        margin-bottom: 30px;
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+        border-left: 5px solid #3498db;
+      }
+
+      .form-section h3 {
+        color: #2c3e50;
+        margin-bottom: 20px;
+        font-size: 1.3rem;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .form-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 20px;
+      }
+
+      .form-group {
+        margin-bottom: 20px;
+      }
+
+      .form-group label {
+        display: block;
+        margin-bottom: 8px;
+        color: #34495e;
+        font-weight: 600;
+        font-size: 0.9rem;
+      }
+
+      .form-group input,
+      .form-group select {
+        width: 100%;
+        padding: 12px 16px;
+        border: 2px solid #e1e8ed;
+        border-radius: 10px;
+        font-size: 1rem;
+        transition: all 0.3s ease;
+        background: #f8f9fa;
+      }
+
+      .form-group input:focus,
+      .form-group select:focus {
+        outline: none;
+        border-color: #3498db;
+        background: white;
+        box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+      }
+
+      .form-group.required label::after {
+        content: " *";
+        color: #e74c3c;
+      }
+
+      .help-text {
+        font-size: 0.8rem;
+        color: #7f8c8d;
+        margin-top: 5px;
+      }
+
+      .submit-section {
+        text-align: center;
+        margin-top: 40px;
+      }
+
+      .btn-provision {
+        background: linear-gradient(45deg, #3498db, #2980b9);
+        color: white;
+        padding: 15px 40px;
+        border: none;
+        border-radius: 50px;
+        font-size: 1.1rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .btn-provision:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 25px rgba(52, 152, 219, 0.3);
+      }
+
+      .btn-provision:disabled {
+        background: #bdc3c7;
+        cursor: not-allowed;
+        transform: none;
+        box-shadow: none;
+      }
+
+      .loading {
+        display: none;
+        align-items: center;
+        justify-content: center;
+        margin-top: 20px;
+      }
+
+      .spinner {
+        width: 40px;
+        height: 40px;
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #3498db;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin-right: 15px;
+      }
+
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg);
+        }
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+
+      .results {
+        display: none;
+        margin-top: 30px;
+        padding: 30px;
+        background: #f8f9fa;
+        border-radius: 15px;
+        border-left: 5px solid #27ae60;
+      }
+
+      .results.error {
+        border-left-color: #e74c3c;
+        background: #fdf2f2;
+      }
+
+      .results h3 {
+        color: #27ae60;
+        margin-bottom: 20px;
+      }
+
+      .results.error h3 {
+        color: #e74c3c;
+      }
+
+      .resource-item {
+        background: white;
+        padding: 20px;
+        margin: 10px 0;
+        border-radius: 10px;
+        border-left: 4px solid #3498db;
+      }
+
+      .resource-item h4 {
+        color: #2c3e50;
+        margin-bottom: 10px;
+      }
+
+      .resource-details {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 10px;
+        font-size: 0.9rem;
+      }
+
+      .detail-item {
+        display: flex;
+        justify-content: space-between;
+        padding: 5px 0;
+        border-bottom: 1px solid #ecf0f1;
+      }
+
+      .detail-label {
+        font-weight: 600;
+        color: #7f8c8d;
+      }
+
+      .detail-value {
+        color: #2c3e50;
+        word-break: break-all;
+      }
+
+      .icon {
+        font-size: 1.2rem;
+        margin-right: 8px;
+      }
+
+      .section-icon {
+        color: #3498db;
+      }
+
+      .copy-btn {
+        background: #95a5a6;
+        color: white;
+        border: none;
+        padding: 4px 8px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 0.8rem;
+        margin-left: 10px;
+      }
+
+      .copy-btn:hover {
+        background: #7f8c8d;
+      }
+
+      .status-new {
+        color: #27ae60;
+        font-weight: bold;
+      }
+
+      .status-existing {
+        color: #f39c12;
+        font-weight: bold;
+      }
+
+      .status-configured {
+        color: #27ae60;
+        font-weight: bold;
+      }
+
+      .status-skipped {
+        color: #f39c12;
+        font-weight: bold;
+      }
+
+      .auto-populate-btn {
+        background: #95a5a6;
+        color: white;
+        border: none;
+        padding: 8px 12px;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 0.8rem;
+        margin-left: 10px;
+      }
+
+      .auto-populate-btn:hover {
+        background: #7f8c8d;
+      }
+
+      @media (max-width: 768px) {
+        .container {
+          padding: 20px;
+        }
+
+        .header h1 {
+          font-size: 2rem;
+        }
+
+        .form-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>🚀 Azure Resource Provisioner</h1>
+        <p>
+          Configure and provision Enterprise Applications, App Registrations,
+          and Resource Groups with complete control
+        </p>
+      </div>
+
+      <form id="provisionForm">
+        <!-- Azure Configuration Section -->
+        <div class="form-section">
+          <h3><span class="icon section-icon">☁️</span>Azure Configuration</h3>
+          <div class="form-grid">
+            <div class="form-group required">
+              <label for="tenantId">Tenant ID</label>
+              <input type="text" id="tenantId" name="tenantId" required />
+              <div class="help-text">Your Azure AD tenant identifier</div>
+            </div>
+            <div class="form-group required">
+              <label for="subscriptionId">Subscription ID</label>
+              <input
+                type="text"
+                id="subscriptionId"
+                name="subscriptionId"
+                required
+              />
+              <div class="help-text">
+                Azure subscription where resources will be created
+              </div>
+            </div>
+            <div class="form-group required">
+              <label for="clientId">Service Principal Client ID</label>
+              <input type="text" id="clientId" name="clientId" required />
+              <div class="help-text">
+                Client ID of service principal with permissions
+              </div>
+            </div>
+            <div class="form-group required">
+              <label for="clientSecret">Service Principal Client Secret</label>
+              <input
+                type="password"
+                id="clientSecret"
+                name="clientSecret"
+                required
+              />
+              <div class="help-text">Secret for the service principal</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Resource Configuration Section -->
+        <div class="form-section">
+          <h3>
+            <span class="icon section-icon">🏗️</span>Resource Configuration
+          </h3>
+          <div class="form-grid">
+            <div class="form-group required">
+              <label for="resourceGroupName">Resource Group Name</label>
+              <input
+                type="text"
+                id="resourceGroupName"
+                name="resourceGroupName"
+                required
+              />
+              <div class="help-text">
+                Name for the resource group to contain all resources
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="location">Location</label>
+              <select id="location" name="location">
+                <option value="East US">East US</option>
+                <option value="West US">West US</option>
+                <option value="West Europe">West Europe</option>
+                <option value="North Europe">North Europe</option>
+                <option value="Southeast Asia">Southeast Asia</option>
+              </select>
+              <div class="help-text">Azure region for resource deployment</div>
+            </div>
+            <div class="form-group">
+              <label for="environment">Environment</label>
+              <select id="environment" name="environment">
+                <option value="dev">Development</option>
+                <option value="test">Test</option>
+                <option value="prod">Production</option>
+              </select>
+              <div class="help-text">
+                Environment designation for resource naming
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="applicationPrefix">Application Prefix</label>
+              <input
+                type="text"
+                id="applicationPrefix"
+                name="applicationPrefix"
+                value="myapp"
+              />
+              <div class="help-text">Prefix for all application names</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- App Registration Configuration Section -->
+        <div class="form-section">
+          <h3>
+            <span class="icon section-icon">📱</span>App Registration
+            Configuration
+          </h3>
+          <div class="form-grid">
+            <div class="form-group">
+              <label for="app1Name">App Registration 1 - Name Suffix</label>
+              <input
+                type="text"
+                id="app1Name"
+                name="app1Name"
+                value="app-reg-1"
+                placeholder="app-reg-1"
+              />
+              <div class="help-text">
+                Suffix for first app registration (Web App with user.read scope)
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="app1RedirectUri"
+                >App Registration 1 - Redirect URI</label
+              >
+              <input
+                type="url"
+                id="app1RedirectUri"
+                name="app1RedirectUri"
+                placeholder="https://myapp-dev-app1.azurewebsites.net/signin-oidc"
+              />
+              <div class="help-text">
+                OAuth redirect URI for first app registration
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="app2Name">App Registration 2 - Name Suffix</label>
+              <input
+                type="text"
+                id="app2Name"
+                name="app2Name"
+                value="app-reg-2"
+                placeholder="app-reg-2"
+              />
+              <div class="help-text">
+                Suffix for second app registration (Web App with api.access
+                scope)
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="app2RedirectUri"
+                >App Registration 2 - Redirect URI</label
+              >
+              <input
+                type="url"
+                id="app2RedirectUri"
+                name="app2RedirectUri"
+                placeholder="https://myapp-dev-app2.azurewebsites.net/signin-oidc"
+              />
+              <div class="help-text">
+                OAuth redirect URI for second app registration
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="app3Name">App Registration 3 - Name Suffix</label>
+              <input
+                type="text"
+                id="app3Name"
+                name="app3Name"
+                value="app-reg-3"
+                placeholder="app-reg-3"
+              />
+              <div class="help-text">
+                Suffix for third app registration (SPA with resource.manage
+                scope)
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="app3RedirectUri"
+                >App Registration 3 - Redirect URI</label
+              >
+              <input
+                type="url"
+                id="app3RedirectUri"
+                name="app3RedirectUri"
+                placeholder="https://myapp-dev-app3.azurewebsites.net/auth/callback"
+              />
+              <div class="help-text">
+                OAuth redirect URI for third app registration (SPA)
+              </div>
+            </div>
+          </div>
+          <div class="form-grid">
+            <div class="form-group">
+              <label for="enableCrossPermissions"
+                >Enable Cross-Application Permissions</label
+              >
+              <select id="enableCrossPermissions" name="enableCrossPermissions">
+                <option value="true">Yes - Configure app permissions</option>
+                <option value="false">No - Skip cross permissions</option>
+              </select>
+              <div class="help-text">
+                Allow app registrations to access each other's scopes
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="generateSecrets">Generate Client Secrets</label>
+              <select id="generateSecrets" name="generateSecrets">
+                <option value="true">Yes - Generate new secrets</option>
+                <option value="false">No - Skip secret generation</option>
+              </select>
+              <div class="help-text">
+                Create client secrets for app registrations
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Enterprise Application Configuration Section -->
+        <div class="form-section">
+          <h3>
+            <span class="icon section-icon">🏢</span>Enterprise Application
+            Configuration
+          </h3>
+          <div class="form-grid">
+            <div class="form-group">
+              <label for="enterprise1Name"
+                >Enterprise App 1 - Name Suffix</label
+              >
+              <input
+                type="text"
+                id="enterprise1Name"
+                name="enterprise1Name"
+                value="enterprise-app-1"
+                placeholder="enterprise-app-1"
+              />
+              <div class="help-text">
+                Suffix for first enterprise application (SAML SSO + Application
+                Proxy)
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="enterprise2Name"
+                >Enterprise App 2 - Name Suffix</label
+              >
+              <input
+                type="text"
+                id="enterprise2Name"
+                name="enterprise2Name"
+                value="enterprise-app-2"
+                placeholder="enterprise-app-2"
+              />
+              <div class="help-text">
+                Suffix for second enterprise application (Application Proxy
+                Only)
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Application Proxy Configuration Section -->
+        <div class="form-section">
+          <h3>
+            <span class="icon section-icon">🔗</span>Application Proxy
+            Configuration
+          </h3>
+          <div class="form-grid">
+            <div class="form-group">
+              <label for="internalUrl1">Enterprise App 1 - Internal URL</label>
+              <input
+                type="url"
+                id="internalUrl1"
+                name="internalUrl1"
+                placeholder="http://internal-app1.company.com"
+              />
+              <div class="help-text">
+                Internal URL for first enterprise application (SAML + Proxy)
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="externalUrl1">Enterprise App 1 - External URL</label>
+              <input
+                type="url"
+                id="externalUrl1"
+                name="externalUrl1"
+                placeholder="https://app1-external.company.com"
+              />
+              <div class="help-text">
+                External URL for first enterprise application (used in SAML
+                configuration)
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="internalUrl2">Enterprise App 2 - Internal URL</label>
+              <input
+                type="url"
+                id="internalUrl2"
+                name="internalUrl2"
+                placeholder="http://internal-app2.company.com"
+              />
+              <div class="help-text">
+                Internal URL for second enterprise application (Proxy only)
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="externalUrl2">Enterprise App 2 - External URL</label>
+              <input
+                type="url"
+                id="externalUrl2"
+                name="externalUrl2"
+                placeholder="https://app2-external.company.com"
+              />
+              <div class="help-text">
+                External URL for second enterprise application (Proxy only)
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="submit-section">
+          <button type="submit" class="btn-provision" id="submitBtn">
+            🚀 Provision Azure Resources
+          </button>
+
+          <div class="loading" id="loadingDiv">
+            <div class="spinner"></div>
+            <span>Provisioning resources... This may take a few minutes.</span>
+          </div>
+        </div>
+      </form>
+
+      <div class="results" id="resultsDiv">
+        <h3 id="resultsTitle">Provisioning Results</h3>
+        <div id="resultsContent"></div>
+      </div>
+    </div>
+
+    <script>
+      // Auto-populate redirect URIs based on application prefix and environment
+      function updateRedirectUris() {
+        const applicationPrefix =
+          document.getElementById("applicationPrefix").value || "myapp";
+        const environment =
+          document.getElementById("environment").value || "dev";
+
+        const app1Name =
+          document.getElementById("app1Name").value || "app-reg-1";
+        const app2Name =
+          document.getElementById("app2Name").value || "app-reg-2";
+        const app3Name =
+          document.getElementById("app3Name").value || "app-reg-3";
+
+        // Update redirect URIs if they're empty or match the pattern
+        const app1RedirectUri = document.getElementById("app1RedirectUri");
+        const app2RedirectUri = document.getElementById("app2RedirectUri");
+        const app3RedirectUri = document.getElementById("app3RedirectUri");
+
+        if (
+          !app1RedirectUri.value ||
+          app1RedirectUri.value.includes("myapp-dev-app1")
+        ) {
+          app1RedirectUri.value = `https://${applicationPrefix}-${environment}-app1.azurewebsites.net/signin-oidc`;
+        }
+        if (
+          !app2RedirectUri.value ||
+          app2RedirectUri.value.includes("myapp-dev-app2")
+        ) {
+          app2RedirectUri.value = `https://${applicationPrefix}-${environment}-app2.azurewebsites.net/signin-oidc`;
+        }
+        if (
+          !app3RedirectUri.value ||
+          app3RedirectUri.value.includes("myapp-dev-app3")
+        ) {
+          app3RedirectUri.value = `https://${applicationPrefix}-${environment}-app3.azurewebsites.net/auth/callback`;
+        }
+      }
+
+      // Auto-populate proxy URLs with defaults
+      function updateProxyUrls() {
+        const internalUrl1 = document.getElementById("internalUrl1");
+        const externalUrl1 = document.getElementById("externalUrl1");
+        const internalUrl2 = document.getElementById("internalUrl2");
+        const externalUrl2 = document.getElementById("externalUrl2");
+
+        if (!internalUrl1.value) {
+          internalUrl1.value = "http://internal-app1.company.com";
+        }
+        if (!externalUrl1.value) {
+          externalUrl1.value = "https://app1-external.company.com";
+        }
+        if (!internalUrl2.value) {
+          internalUrl2.value = "http://internal-app2.company.com";
+        }
+        if (!externalUrl2.value) {
+          externalUrl2.value = "https://app2-external.company.com";
+        }
+      }
+
+      // Add event listeners for auto-population
+      document.addEventListener("DOMContentLoaded", function () {
+        const applicationPrefix = document.getElementById("applicationPrefix");
+        const environment = document.getElementById("environment");
+
+        applicationPrefix.addEventListener("input", updateRedirectUris);
+        environment.addEventListener("change", updateRedirectUris);
+
+        // Initialize with default values
+        updateRedirectUris();
+        updateProxyUrls();
+      });
+
+      document
+        .getElementById("provisionForm")
+        .addEventListener("submit", async function (e) {
+          e.preventDefault();
+
+          const submitBtn = document.getElementById("submitBtn");
+          const loadingDiv = document.getElementById("loadingDiv");
+          const resultsDiv = document.getElementById("resultsDiv");
+
+          // Show loading state
+          submitBtn.disabled = true;
+          loadingDiv.style.display = "flex";
+          resultsDiv.style.display = "none";
+
+          // Collect form data
+          const formData = new FormData(this);
+          const data = Object.fromEntries(formData.entries());
+
+          try {
+            const response = await fetch("/api/provision", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify(data),
+            });
+
+            const result = await response.json();
+
+            // Hide loading state
+            loadingDiv.style.display = "none";
+            submitBtn.disabled = false;
+
+            // Show results
+            displayResults(result);
+          } catch (error) {
+            // Hide loading state
+            loadingDiv.style.display = "none";
+            submitBtn.disabled = false;
+
+            // Show error
+            displayError(error.message);
+          }
+        });
+
+      function displayResults(result) {
+        const resultsDiv = document.getElementById("resultsDiv");
+        const resultsTitle = document.getElementById("resultsTitle");
+        const resultsContent = document.getElementById("resultsContent");
+
+        resultsDiv.className = result.success ? "results" : "results error";
+        resultsTitle.textContent = result.success
+          ? "✅ Provisioning Completed Successfully!"
+          : "❌ Provisioning Failed";
+
+        if (result.success) {
+          let html = `
+                    <div class="resource-item">
+                        <h4>📊 Summary</h4>
+                        <div class="resource-details">
+                            <div class="detail-item">
+                                <span class="detail-label">Resource Group:</span>
+                                <span class="detail-value">${
+                                  result.summary.resourceGroupCreated
+                                    ? "✅ Created"
+                                    : "❌ Failed"
+                                }</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">App Registrations Created:</span>
+                                <span class="detail-value">${
+                                  result.summary.appRegistrationsCreated
+                                }</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">App Registrations Reused:</span>
+                                <span class="detail-value">${
+                                  result.summary.appRegistrationsReused
+                                }</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Enterprise Apps Created:</span>
+                                <span class="detail-value">${
+                                  result.summary.enterpriseApplicationsCreated
+                                }</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Enterprise Apps Reused:</span>
+                                <span class="detail-value">${
+                                  result.summary.enterpriseApplicationsReused
+                                }</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Cross-App Permissions:</span>
+                                <span class="detail-value status-${
+                                  result.summary
+                                    .crossApplicationPermissionsConfigured
+                                    ? "configured"
+                                    : "skipped"
+                                }">${
+            result.summary.crossApplicationPermissionsConfigured
+              ? "✅ Configured"
+              : "⚠️ Skipped"
+          }</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Client Secrets:</span>
+                                <span class="detail-value status-${
+                                  result.summary.clientSecretsGenerated
+                                    ? "configured"
+                                    : "skipped"
+                                }">${
+            result.summary.clientSecretsGenerated
+              ? "✅ Generated"
+              : "⚠️ Skipped"
+          }</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Errors:</span>
+                                <span class="detail-value">${
+                                  result.summary.errorsCount
+                                } errors</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Warnings:</span>
+                                <span class="detail-value">${
+                                  result.summary.warningsCount
+                                } warnings</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+          // App Registrations
+          if (result.results.appRegistrations.length > 0) {
+            result.results.appRegistrations.forEach((app, index) => {
+              const statusIcon = app.isExisting ? "🔄" : "✨";
+              const statusText = app.isExisting
+                ? "Existing (Reused)"
+                : "Newly Created";
+              const statusColor = app.isExisting ? "#f39c12" : "#27ae60";
+
+              html += `
+                            <div class="resource-item">
+                                <h4>${statusIcon} App Registration ${
+                index + 1
+              }: ${app.displayName}</h4>
+                                <div class="resource-details">
+                                    <div class="detail-item">
+                                        <span class="detail-label">Status:</span>
+                                        <span class="detail-value" style="color: ${statusColor}; font-weight: bold;">${statusText}</span>
+                                    </div>
+                                    <div class="detail-item">
+                                        <span class="detail-label">App ID:</span>
+                                        <span class="detail-value">${
+                                          app.appId
+                                        } <button class="copy-btn" onclick="copyToClipboard('${
+                app.appId
+              }')">Copy</button></span>
+                                    </div>
+                                    <div class="detail-item">
+                                        <span class="detail-label">Object ID:</span>
+                                        <span class="detail-value">${
+                                          app.objectId
+                                        }</span>
+                                    </div>
+                                    <div class="detail-item">
+                                        <span class="detail-label">App Type:</span>
+                                        <span class="detail-value">${
+                                          app.type === "spa"
+                                            ? "Single Page Application (SPA)"
+                                            : "Web Application"
+                                        }</span>
+                                    </div>`;
+
+              // Only show client secret if it's valid
+              if (
+                app.clientSecret &&
+                !app.clientSecret.includes("Unable to generate") &&
+                !app.clientSecret.includes("skipped")
+              ) {
+                html += `
+                                    <div class="detail-item">
+                                        <span class="detail-label">Client Secret:</span>
+                                        <span class="detail-value">${app.clientSecret} <button class="copy-btn" onclick="copyToClipboard('${app.clientSecret}')">Copy</button></span>
+                                    </div>`;
+              } else if (
+                app.isExisting ||
+                app.clientSecret.includes("skipped")
+              ) {
+                html += `
+                                    <div class="detail-item">
+                                        <span class="detail-label">Client Secret:</span>
+                                        <span class="detail-value" style="color: #f39c12;">⚠️ ${app.clientSecret}</span>
+                                    </div>`;
+              }
+
+              if (app.redirectUris && app.redirectUris.length > 0) {
+                html += `
+                                    <div class="detail-item">
+                                        <span class="detail-label">Redirect URIs:</span>
+                                        <span class="detail-value">${app.redirectUris.join(
+                                          ", "
+                                        )}</span>
+                                    </div>`;
+              }
+
+              html += `
+                                    <div class="detail-item">
+                                        <span class="detail-label">Service Principal ID:</span>
+                                        <span class="detail-value">${app.servicePrincipalId}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+            });
+          }
+
+          // Enterprise Applications
+          if (result.results.enterpriseApplications.length > 0) {
+            result.results.enterpriseApplications.forEach((app, index) => {
+              const statusIcon = app.isExisting ? "🔄" : "✨";
+              const statusText = app.isExisting
+                ? "Existing (Reused)"
+                : "Newly Created";
+              const statusColor = app.isExisting ? "#f39c12" : "#27ae60";
+
+              html += `
+                            <div class="resource-item">
+                                <h4>${statusIcon} Enterprise Application ${
+                index + 1
+              }: ${app.displayName}</h4>
+                                <div class="resource-details">
+                                    <div class="detail-item">
+                                        <span class="detail-label">Status:</span>
+                                        <span class="detail-value" style="color: ${statusColor}; font-weight: bold;">${statusText}</span>
+                                    </div>
+                                    <div class="detail-item">
+                                        <span class="detail-label">App ID:</span>
+                                        <span class="detail-value">${
+                                          app.appId
+                                        }</span>
+                                    </div>
+                                    <div class="detail-item">
+                                        <span class="detail-label">Type:</span>
+                                        <span class="detail-value">${
+                                          app.type === "saml"
+                                            ? "SAML SSO + Application Proxy"
+                                            : "Application Proxy Only"
+                                        }</span>
+                                    </div>
+                                    <div class="detail-item">
+                                        <span class="detail-label">SSO Mode:</span>
+                                        <span class="detail-value">${
+                                          app.ssoMode
+                                        }</span>
+                                    </div>`;
+
+              // Only show SAML settings if they exist
+              if (app.samlSettings && app.type === "saml") {
+                html += `
+                                    <div class="detail-item">
+                                        <span class="detail-label">SAML Reply URL:</span>
+                                        <span class="detail-value">${app.samlSettings.replyUrl}</span>
+                                    </div>
+                                    <div class="detail-item">
+                                        <span class="detail-label">SAML Sign-on URL:</span>
+                                        <span class="detail-value">${app.samlSettings.signOnUrl}</span>
+                                    </div>
+                                    <div class="detail-item">
+                                        <span class="detail-label">SAML Identifier:</span>
+                                        <span class="detail-value">${app.samlSettings.identifier}</span>
+                                    </div>`;
+              }
+
+              // Always show proxy settings
+              if (app.proxySettings) {
+                html += `
+                                    <div class="detail-item">
+                                        <span class="detail-label">Internal URL:</span>
+                                        <span class="detail-value">${app.proxySettings.internalUrl}</span>
+                                    </div>
+                                    <div class="detail-item">
+                                        <span class="detail-label">External URL:</span>
+                                        <span class="detail-value">${app.proxySettings.externalUrl}</span>
+                                    </div>`;
+              }
+
+              html += `
+                                </div>
+                            </div>
+                        `;
+            });
+          }
+
+          // Errors
+          if (result.results.errors.length > 0) {
+            html += `
+                        <div class="resource-item" style="border-left-color: #e74c3c;">
+                            <h4>⚠️ Errors Encountered</h4>
+                            <div class="resource-details">
+                                ${result.results.errors
+                                  .map(
+                                    (error) => `
+                                    <div class="detail-item">
+                                        <span class="detail-value" style="color: #e74c3c;">${error}</span>
+                                    </div>
+                                `
+                                  )
+                                  .join("")}
+                            </div>
+                        </div>
+                    `;
+          }
+
+          // Warnings
+          if (result.results.warnings && result.results.warnings.length > 0) {
+            html += `
+                        <div class="resource-item" style="border-left-color: #f39c12;">
+                            <h4>⚠️ Manual Steps Required</h4>
+                            <div class="resource-details">
+                                ${result.results.warnings
+                                  .map(
+                                    (warning) => `
+                                    <div class="detail-item">
+                                        <span class="detail-value" style="color: #f39c12;">${warning}</span>
+                                    </div>
+                                `
+                                  )
+                                  .join("")}
+                            </div>
+                        </div>
+                    `;
+          }
+
+          resultsContent.innerHTML = html;
+        } else {
+          resultsContent.innerHTML = `
+                    <div class="resource-item" style="border-left-color: #e74c3c;">
+                        <h4>Error Details</h4>
+                        <p style="color: #e74c3c;">${
+                          result.message || result.error
+                        }</p>
+                    </div>
+                `;
+        }
+
+        resultsDiv.style.display = "block";
+      }
+
+      function displayError(message) {
+        const resultsDiv = document.getElementById("resultsDiv");
+        const resultsTitle = document.getElementById("resultsTitle");
+        const resultsContent = document.getElementById("resultsContent");
+
+        resultsDiv.className = "results error";
+        resultsTitle.textContent = "❌ Request Failed";
+        resultsContent.innerHTML = `
+                <div class="resource-item" style="border-left-color: #e74c3c;">
+                    <h4>Error</h4>
+                    <p style="color: #e74c3c;">${message}</p>
+                </div>
+            `;
+        resultsDiv.style.display = "block";
+      }
+
+      function copyToClipboard(text) {
+        navigator.clipboard.writeText(text).then(() => {
+          // Show temporary feedback
+          const btn = event.target;
+          const originalText = btn.textContent;
+          btn.textContent = "Copied!";
+          btn.style.background = "#27ae60";
+          setTimeout(() => {
+            btn.textContent = originalText;
+            btn.style.background = "#95a5a6";
+          }, 2000);
+        });
+      }
+    </script>
+  </body>
+</html>
