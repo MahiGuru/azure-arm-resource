@@ -425,11 +425,13 @@
                 type="text"
                 id="app1Name"
                 name="app1Name"
-                value="mahi-app-connector"
-                placeholder="mahi-app-connector"
+                value="mahi-connector-app"
+                placeholder="Enter custom name"
               />
+              <input type="hidden" name="app1Id" value="MAHI_CONNECTOR_APP" />
               <div class="help-text">
-                Suffix for first app registration (Web App with user.read scope)
+                App Registration 1: Web App with advanced permissions (user.read
+                scope)
               </div>
             </div>
             <div class="form-group">
@@ -443,7 +445,7 @@
                 placeholder="https://myapp-dev-app1.azurewebsites.net/signin-oidc"
               />
               <div class="help-text">
-                OAuth redirect URI for first app registration
+                OAuth redirect URI for App Registration 1
               </div>
             </div>
             <div class="form-group">
@@ -453,11 +455,11 @@
                 id="app2Name"
                 name="app2Name"
                 value="mahi-api-access"
-                placeholder="mahi-api-access"
+                placeholder="Enter custom name"
               />
+              <input type="hidden" name="app2Id" value="MAHI_API_ACCESS" />
               <div class="help-text">
-                Suffix for second app registration (Web App with api.access
-                scope)
+                App Registration 2: Web App with API exposure (api.access scope)
               </div>
             </div>
             <div class="form-group">
@@ -471,7 +473,7 @@
                 placeholder="https://myapp-dev-app2.azurewebsites.net/signin-oidc"
               />
               <div class="help-text">
-                OAuth redirect URI for second app registration
+                OAuth redirect URI for App Registration 2
               </div>
             </div>
             <div class="form-group">
@@ -481,11 +483,12 @@
                 id="app3Name"
                 name="app3Name"
                 value="mahi-teams-app"
-                placeholder="mahi-teams-app"
+                placeholder="Enter custom name"
               />
+              <input type="hidden" name="app3Id" value="MAHI_TEAMS_APP" />
               <div class="help-text">
-                Suffix for third app registration (SPA with resource.manage
-                scope)
+                App Registration 3: SPA with resource management
+                (resource.manage scope)
               </div>
             </div>
             <div class="form-group">
@@ -499,7 +502,7 @@
                 placeholder="https://myapp-dev-app3.azurewebsites.net/auth/callback"
               />
               <div class="help-text">
-                OAuth redirect URI for third app registration (SPA)
+                OAuth redirect URI for App Registration 3 (SPA)
               </div>
             </div>
           </div>
@@ -544,12 +547,16 @@
                 type="text"
                 id="enterprise1Name"
                 name="enterprise1Name"
-                value="enterprise-app-1"
-                placeholder="enterprise-app-1"
+                value="app-proxy-saml-app"
+                placeholder="Enter custom name"
+              />
+              <input
+                type="hidden"
+                name="enterprise1Id"
+                value="APP_PROXY_SAML_APP"
               />
               <div class="help-text">
-                Suffix for first enterprise application (SAML SSO + Application
-                Proxy)
+                Enterprise App 1: SAML SSO + Application Proxy
               </div>
             </div>
             <div class="form-group">
@@ -560,12 +567,16 @@
                 type="text"
                 id="enterprise2Name"
                 name="enterprise2Name"
-                value="enterprise-app-2"
-                placeholder="enterprise-app-2"
+                value="chat-proxy-app"
+                placeholder="Enter custom name"
+              />
+              <input
+                type="hidden"
+                name="enterprise2Id"
+                value="CHAT_PROXY_APP"
               />
               <div class="help-text">
-                Suffix for second enterprise application (Application Proxy
-                Only)
+                Enterprise App 2: Application Proxy Only
               </div>
             </div>
           </div>
@@ -579,52 +590,59 @@
           </h3>
           <div class="form-grid">
             <div class="form-group">
-              <label for="internalUrl1">Enterprise App 1 - Internal URL</label>
+              <label for="enterprise1InternalUrl"
+                >Enterprise App 1 - Internal URL</label
+              >
               <input
                 type="url"
-                id="internalUrl1"
-                name="internalUrl1"
-                placeholder="http://internal-app1.company.com"
+                id="enterprise1InternalUrl"
+                name="enterprise1InternalUrl"
+                placeholder="http://internal-saml-app.company.com"
               />
               <div class="help-text">
-                Internal URL for first enterprise application (SAML + Proxy)
+                Internal URL for Enterprise App 1 (SAML + Proxy)
               </div>
             </div>
             <div class="form-group">
-              <label for="externalUrl1">Enterprise App 1 - External URL</label>
+              <label for="enterprise1ExternalUrl"
+                >Enterprise App 1 - External URL</label
+              >
               <input
                 type="url"
-                id="externalUrl1"
-                name="externalUrl1"
-                placeholder="https://app1-external.company.com"
+                id="enterprise1ExternalUrl"
+                name="enterprise1ExternalUrl"
+                placeholder="https://saml-app-external.company.com"
               />
               <div class="help-text">
-                External URL for first enterprise application (used in SAML
-                configuration)
+                External URL for Enterprise App 1 (used in SAML configuration)
               </div>
             </div>
             <div class="form-group">
-              <label for="internalUrl2">Enterprise App 2 - Internal URL</label>
+              <label for="enterprise2InternalUrl"
+                >Enterprise App 2 - Internal URL</label
+              >
               <input
                 type="url"
-                id="internalUrl2"
-                name="internalUrl2"
-                placeholder="http://internal-app2.company.com"
+                id="enterprise2InternalUrl"
+                name="enterprise2InternalUrl"
+                placeholder="http://internal-chat-app.company.com"
               />
               <div class="help-text">
-                Internal URL for second enterprise application (Proxy only)
+                Internal URL for Enterprise App 2 (Proxy only)
               </div>
             </div>
             <div class="form-group">
-              <label for="externalUrl2">Enterprise App 2 - External URL</label>
+              <label for="enterprise2ExternalUrl"
+                >Enterprise App 2 - External URL</label
+              >
               <input
                 type="url"
-                id="externalUrl2"
-                name="externalUrl2"
-                placeholder="https://app2-external.company.com"
+                id="enterprise2ExternalUrl"
+                name="enterprise2ExternalUrl"
+                placeholder="https://chat-app-external.company.com"
               />
               <div class="help-text">
-                External URL for second enterprise application (Proxy only)
+                External URL for Enterprise App 2 (Proxy only)
               </div>
             </div>
           </div>
@@ -649,19 +667,19 @@
     </div>
 
     <script>
-      // Auto-populate redirect URIs based on application prefix and environment
+      /**
+       * Automatically updates redirect URIs based on application prefix and environment
+       * This function generates dynamic redirect URIs for all app registrations
+       */
       function updateRedirectUris() {
         const applicationPrefix =
           document.getElementById("applicationPrefix").value || "myapp";
         const environment =
           document.getElementById("environment").value || "dev";
 
-        const app1Name =
-          document.getElementById("app1Name").value || "mahi-app-connector";
-        const app2Name =
-          document.getElementById("app2Name").value || "mahi-api-access";
-        const app3Name =
-          document.getElementById("app3Name").value || "mahi-teams-app";
+        const app1Name = document.getElementById("app1Name").value || "app1";
+        const app2Name = document.getElementById("app2Name").value || "app2";
+        const app3Name = document.getElementById("app3Name").value || "app3";
 
         // Update redirect URIs if they're empty or match the pattern
         const app1RedirectUri = document.getElementById("app1RedirectUri");
@@ -688,24 +706,37 @@
         }
       }
 
-      // Auto-populate proxy URLs with defaults
+      /**
+       * Auto-populates proxy URLs with default values for enterprise applications
+       * Sets default internal and external URLs for both enterprise applications
+       */
       function updateProxyUrls() {
-        const internalUrl1 = document.getElementById("internalUrl1");
-        const externalUrl1 = document.getElementById("externalUrl1");
-        const internalUrl2 = document.getElementById("internalUrl2");
-        const externalUrl2 = document.getElementById("externalUrl2");
+        const enterprise1InternalUrl = document.getElementById(
+          "enterprise1InternalUrl"
+        );
+        const enterprise1ExternalUrl = document.getElementById(
+          "enterprise1ExternalUrl"
+        );
+        const enterprise2InternalUrl = document.getElementById(
+          "enterprise2InternalUrl"
+        );
+        const enterprise2ExternalUrl = document.getElementById(
+          "enterprise2ExternalUrl"
+        );
 
-        if (!internalUrl1.value) {
-          internalUrl1.value = "http://internal-app1.company.com";
+        if (!enterprise1InternalUrl.value) {
+          enterprise1InternalUrl.value = "http://internal-saml-app.company.com";
         }
-        if (!externalUrl1.value) {
-          externalUrl1.value = "https://app1-external.company.com";
+        if (!enterprise1ExternalUrl.value) {
+          enterprise1ExternalUrl.value =
+            "https://saml-app-external.company.com";
         }
-        if (!internalUrl2.value) {
-          internalUrl2.value = "http://internal-app2.company.com";
+        if (!enterprise2InternalUrl.value) {
+          enterprise2InternalUrl.value = "http://internal-chat-app.company.com";
         }
-        if (!externalUrl2.value) {
-          externalUrl2.value = "https://app2-external.company.com";
+        if (!enterprise2ExternalUrl.value) {
+          enterprise2ExternalUrl.value =
+            "https://chat-app-external.company.com";
         }
       }
 
@@ -722,6 +753,10 @@
         updateProxyUrls();
       });
 
+      /**
+       * Handles form submission and sends provisioning request to the backend
+       * Manages UI state during the provisioning process and displays results
+       */
       document
         .getElementById("provisionForm")
         .addEventListener("submit", async function (e) {
@@ -767,6 +802,10 @@
           }
         });
 
+      /**
+       * Displays the provisioning results in a structured format
+       * Shows summary, app registrations, enterprise applications, and any errors/warnings
+       */
       function displayResults(result) {
         const resultsDiv = document.getElementById("resultsDiv");
         const resultsTitle = document.getElementById("resultsTitle");
@@ -864,11 +903,21 @@
                 : "Newly Created";
               const statusColor = app.isExisting ? "#f39c12" : "#27ae60";
 
+              // Determine app type name based on unique ID
+              let appTypeName = "App Registration";
+              if (app.uniqueId === "MAHI_CONNECTOR_APP") {
+                appTypeName = "App Registration 1 (Mahi Connector)";
+              } else if (app.uniqueId === "MAHI_API_ACCESS") {
+                appTypeName = "App Registration 2 (API Access)";
+              } else if (app.uniqueId === "MAHI_TEAMS_APP") {
+                appTypeName = "App Registration 3 (Teams App)";
+              }
+
               html += `
                             <div class="resource-item">
-                                <h4>${statusIcon} App Registration ${
-                index + 1
-              }: ${app.displayName}</h4>
+                                <h4>${statusIcon} ${appTypeName}: ${
+                app.displayName
+              }</h4>
                                 <div class="resource-details">
                                     <div class="detail-item">
                                         <span class="detail-label">Status:</span>
@@ -949,11 +998,19 @@
                 : "Newly Created";
               const statusColor = app.isExisting ? "#f39c12" : "#27ae60";
 
+              // Determine app type name based on unique ID
+              let appTypeName = "Enterprise Application";
+              if (app.uniqueId === "APP_PROXY_SAML_APP") {
+                appTypeName = "Enterprise App 1 (SAML + Proxy)";
+              } else if (app.uniqueId === "CHAT_PROXY_APP") {
+                appTypeName = "Enterprise App 2 (Chat Proxy)";
+              }
+
               html += `
                             <div class="resource-item">
-                                <h4>${statusIcon} Enterprise Application ${
-                index + 1
-              }: ${app.displayName}</h4>
+                                <h4>${statusIcon} ${appTypeName}: ${
+                app.displayName
+              }</h4>
                                 <div class="resource-details">
                                     <div class="detail-item">
                                         <span class="detail-label">Status:</span>
@@ -1072,6 +1129,9 @@
         resultsDiv.style.display = "block";
       }
 
+      /**
+       * Displays error messages when the provisioning request fails
+       */
       function displayError(message) {
         const resultsDiv = document.getElementById("resultsDiv");
         const resultsTitle = document.getElementById("resultsTitle");
@@ -1088,6 +1148,9 @@
         resultsDiv.style.display = "block";
       }
 
+      /**
+       * Copies text to clipboard and provides visual feedback
+       */
       function copyToClipboard(text) {
         navigator.clipboard.writeText(text).then(() => {
           // Show temporary feedback

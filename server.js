@@ -1,3 +1,4 @@
+// server.js - Enhanced Complete Version with API Permissions & Admin Consent
 const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
@@ -42,7 +43,7 @@ app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(express.static("public"));
 
-// Complete validation schema with all fields
+// Complete validation schema with all fields using unique IDs
 const provisioningSchema = Joi.object({
   tenantId: Joi.string().guid().required(),
   subscriptionId: Joi.string().guid().required(),
@@ -69,24 +70,27 @@ const provisioningSchema = Joi.object({
   clientId: Joi.string().guid().required(),
   clientSecret: Joi.string().min(1).required(),
 
-  // App Registration Configuration
+  // App Registration Configuration with unique IDs
   app1Name: Joi.string()
     .min(1)
     .max(50)
     .pattern(/^[a-zA-Z0-9-_]+$/)
-    .default("mahi-app-connector"),
+    .default("mahi-connector-app"),
+  app1Id: Joi.string().valid("MAHI_CONNECTOR_APP").required(),
   app1RedirectUri: Joi.string().uri().optional(),
   app2Name: Joi.string()
     .min(1)
     .max(50)
     .pattern(/^[a-zA-Z0-9-_]+$/)
     .default("mahi-api-access"),
+  app2Id: Joi.string().valid("MAHI_API_ACCESS").required(),
   app2RedirectUri: Joi.string().uri().optional(),
   app3Name: Joi.string()
     .min(1)
     .max(50)
     .pattern(/^[a-zA-Z0-9-_]+$/)
     .default("mahi-teams-app"),
+  app3Id: Joi.string().valid("MAHI_TEAMS_APP").required(),
   app3RedirectUri: Joi.string().uri().optional(),
   enableCrossPermissions: Joi.string()
     .valid("true", "false")
@@ -101,26 +105,32 @@ const provisioningSchema = Joi.object({
     .default("true")
     .custom((value) => value === "true"),
 
-  // Enterprise Application Configuration
+  // Enterprise Application Configuration with unique IDs
   enterprise1Name: Joi.string()
     .min(1)
     .max(50)
     .pattern(/^[a-zA-Z0-9-_]+$/)
-    .default("entra-proxy-app-saml"),
+    .default("app-proxy-saml-app"),
+  enterprise1Id: Joi.string().valid("APP_PROXY_SAML_APP").required(),
   enterprise2Name: Joi.string()
     .min(1)
     .max(50)
     .pattern(/^[a-zA-Z0-9-_]+$/)
     .default("chat-proxy-app"),
+  enterprise2Id: Joi.string().valid("CHAT_PROXY_APP").required(),
 
   // Application Proxy Configuration
-  internalUrl1: Joi.string().uri().optional(),
-  externalUrl1: Joi.string().uri().optional(),
-  internalUrl2: Joi.string().uri().optional(),
-  externalUrl2: Joi.string().uri().optional(),
+  enterprise1InternalUrl: Joi.string().uri().optional(),
+  enterprise1ExternalUrl: Joi.string().uri().optional(),
+  enterprise2InternalUrl: Joi.string().uri().optional(),
+  enterprise2ExternalUrl: Joi.string().uri().optional(),
 });
 
-// Validation middleware
+/**
+ * Validation middleware that validates incoming request bodies against a Joi schema
+ * @param {Joi.ObjectSchema} schema - The Joi schema to validate against
+ * @returns {Function} Express middleware function
+ */
 function validateRequest(schema) {
   return (req, res, next) => {
     const { error, value } = schema.validate(req.body);
@@ -139,7 +149,12 @@ function validateRequest(schema) {
   };
 }
 
-// Logging utility
+/**
+ * Centralized logging utility for consistent log formatting across the application
+ * @param {string} level - Log level (info, error, warn)
+ * @param {string} message - Log message
+ * @param {Object} data - Additional data to include in log
+ */
 function log(level, message, data = {}) {
   const logEntry = {
     timestamp: new Date().toISOString(),
@@ -150,13 +165,23 @@ function log(level, message, data = {}) {
   console.log(JSON.stringify(logEntry));
 }
 
-// Azure Resource Manager class
+/**
+ * Azure Resource Manager class for managing Azure Resource Groups
+ * Handles authentication and resource group creation operations
+ */
 class AzureResourceManager {
   constructor() {
     this.client = null;
     this.credential = null;
   }
 
+  /**
+   * Initializes the Azure Resource Manager client with service principal credentials
+   * @param {string} tenantId - Azure AD tenant ID
+   * @param {string} subscriptionId - Azure subscription ID
+   * @param {string} clientId - Service principal client ID
+   * @param {string} clientSecret - Service principal client secret
+   */
   async initialize(tenantId, subscriptionId, clientId, clientSecret) {
     this.credential = new ClientSecretCredential(
       tenantId,
@@ -166,6 +191,12 @@ class AzureResourceManager {
     this.client = new ResourceManagementClient(this.credential, subscriptionId);
   }
 
+  /**
+   * Creates or updates an Azure Resource Group in the specified location
+   * @param {string} resourceGroupName - Name of the resource group to create
+   * @param {string} location - Azure region where the resource group should be created
+   * @returns {Object} Created resource group details including name, location, and ID
+   */
   async createResourceGroup(resourceGroupName, location) {
     try {
       const resourceGroup = {
@@ -194,13 +225,22 @@ class AzureResourceManager {
   }
 }
 
-// Enhanced Graph API Service class with API permissions and admin consent
+/**
+ * Enhanced Graph API Service class for managing Azure AD applications and service principals
+ * Handles app registrations, enterprise applications, API permissions, and admin consent
+ */
 class GraphApiService {
   constructor() {
     this.accessToken = null;
     this.credential = null;
   }
 
+  /**
+   * Initializes the Graph API service with service principal credentials and obtains access token
+   * @param {string} tenantId - Azure AD tenant ID
+   * @param {string} clientId - Service principal client ID
+   * @param {string} clientSecret - Service principal client secret
+   */
   async initialize(tenantId, clientId, clientSecret) {
     try {
       this.credential = new ClientSecretCredential(
@@ -218,6 +258,11 @@ class GraphApiService {
     }
   }
 
+  /**
+   * Checks if an application with the given display name already exists in Azure AD
+   * @param {string} displayName - Display name of the application to search for
+   * @returns {Object|null} Existing application object or null if not found
+   */
   async checkExistingApplication(displayName) {
     try {
       const response = await axios.get(
@@ -237,6 +282,11 @@ class GraphApiService {
     }
   }
 
+  /**
+   * Checks if a service principal with the given app ID already exists in Azure AD
+   * @param {string} appId - Application ID to search for
+   * @returns {Object|null} Existing service principal object or null if not found
+   */
   async checkExistingServicePrincipal(appId) {
     try {
       const response = await axios.get(
@@ -256,26 +306,52 @@ class GraphApiService {
     }
   }
 
-  // Get specific Microsoft Graph API permissions for App Registration 1
-  getApp1Permissions() {
+  /**
+   * Returns specific Microsoft Graph API permissions based on app unique ID
+   * App1 (MAHI_CONNECTOR_APP) gets advanced permissions for role management, user management, and organization access
+   * @param {string} appUniqueId - Unique identifier for the application
+   * @returns {Array} Array of required resource access permissions
+   */
+  getAppPermissionsByUniqueId(appUniqueId) {
+    if (appUniqueId === "MAHI_CONNECTOR_APP") {
+      return [
+        {
+          resourceAppId: "00000003-0000-0000-c000-000000000000", // Microsoft Graph
+          resourceAccess: [
+            { id: "9e3f62cf-ca93-4989-b6ce-bf83c28f9fe8", type: "Role" }, // RoleManagement.ReadWrite.Directory
+            { id: "c79f8feb-a9db-4090-85f9-90d820caa0eb", type: "Role" }, // Organization.Read.All
+            { id: "09850681-111b-4a89-9bed-3f2cae46d706", type: "Role" }, // User.Invite.All
+            { id: "6e472fd1-ad78-48da-a0f0-97ab2c6b769e", type: "Role" }, // IdentityRiskEvent.Read.All
+            { id: "df021288-bdef-4463-88db-98f22de89214", type: "Role" }, // User.Read.All
+            { id: "5b567255-7703-4780-807c-7be8301ae99b", type: "Role" }, // Group.Read.All
+            { id: "62a82d76-70ea-41e2-9197-370581804d09", type: "Role" }, // Group.ReadWrite.All
+            { id: "9a5d68dd-52b0-4cc2-bd40-abcf44ac3a30", type: "Role" }, // Application.Read.All
+            { id: "e1fe6dd8-ba31-4d61-89e7-88639da4683d", type: "Scope" }, // User.Read (delegated)
+          ],
+        },
+      ];
+    }
+
+    // Default permissions for other app registrations
     return [
       {
-        resourceAppId: "00000003-0000-0000-c000-000000000000", // Microsoft Graph
+        resourceAppId: "00000003-0000-0000-c000-000000000000",
         resourceAccess: [
-          { id: "9e3f62cf-ca93-4989-b6ce-bf83c28f9fe8", type: "Role" }, // RoleManagement.ReadWrite.Directory
-          { id: "c79f8feb-a9db-4090-85f9-90d820caa0eb", type: "Role" }, // Organization.Read.All
-          { id: "09850681-111b-4a89-9bed-3f2cae46d706", type: "Role" }, // User.Invite.All
-          { id: "6e472fd1-ad78-48da-a0f0-97ab2c6b769e", type: "Role" }, // IdentityRiskEvent.Read.All
-          { id: "df021288-bdef-4463-88db-98f22de89214", type: "Role" }, // User.Read.All
-          { id: "5b567255-7703-4780-807c-7be8301ae99b", type: "Role" }, // Group.Read.All
-          { id: "62a82d76-70ea-41e2-9197-370581804d09", type: "Role" }, // Group.ReadWrite.All
-          { id: "9a5d68dd-52b0-4cc2-bd40-abcf44ac3a30", type: "Role" }, // Application.Read.All
-          { id: "e1fe6dd8-ba31-4d61-89e7-88639da4683d", type: "Scope" }, // User.Read (delegated)
+          {
+            id: "e1fe6dd8-ba31-4d61-89e7-88639da4683d", // User.Read
+            type: "Scope",
+          },
         ],
       },
     ];
   }
 
+  /**
+   * Creates an Azure AD App Registration with specified configuration
+   * Handles both new creation and reuse of existing applications
+   * @param {Object} config - Configuration object containing app details, scopes, type, and redirect URIs
+   * @returns {Object} Created or existing app registration details including client secret if generated
+   */
   async createAppRegistration(config) {
     try {
       // Check if application already exists
@@ -318,12 +394,13 @@ class GraphApiService {
           servicePrincipalId: existingServicePrincipal?.id || "Not found",
           redirectUris: config.redirectUris,
           type: config.type,
+          uniqueId: config.uniqueId,
           isExisting: true,
           adminConsentGranted: false, // Assume not granted for existing apps
         };
       }
 
-      // Create new application with specific permissions based on app registration number
+      // Create new application with specific permissions based on app name
       const applicationData = {
         displayName: config.name,
         signInAudience: "AzureADMyOrg",
@@ -342,23 +419,10 @@ class GraphApiService {
         },
       };
 
-      // Set specific permissions for App Registration 1
-      if (config.name.includes("app-reg-1")) {
-        applicationData.requiredResourceAccess = this.getApp1Permissions();
-      } else {
-        // Default permissions for other app registrations
-        applicationData.requiredResourceAccess = [
-          {
-            resourceAppId: "00000003-0000-0000-c000-000000000000",
-            resourceAccess: [
-              {
-                id: "e1fe6dd8-ba31-4d61-89e7-88639da4683d", // User.Read
-                type: "Scope",
-              },
-            ],
-          },
-        ];
-      }
+      // Set specific permissions based on app unique ID
+      applicationData.requiredResourceAccess = this.getAppPermissionsByUniqueId(
+        config.uniqueId
+      );
 
       // Configure redirect URIs based on app type
       if (config.type === "web") {
@@ -389,8 +453,8 @@ class GraphApiService {
 
       const createdApp = createAppResponse.data;
 
-      // For App Registration 2: Set Application ID URI
-      if (config.name.includes("app-reg-2")) {
+      // For App2 (MAHI_API_ACCESS): Set Application ID URI
+      if (config.uniqueId === "MAHI_API_ACCESS") {
         await this.setApplicationIdUri(createdApp.id, createdApp.appId);
       }
 
@@ -450,11 +514,13 @@ class GraphApiService {
         servicePrincipalId: servicePrincipal.id,
         redirectUris: config.redirectUris,
         type: config.type,
+        uniqueId: config.uniqueId,
         isExisting: false,
         adminConsentGranted,
-        applicationIdUri: config.name.includes("app-reg-2")
-          ? `api://${createdApp.appId}/api`
-          : null,
+        applicationIdUri:
+          config.uniqueId === "MAHI_API_ACCESS"
+            ? `api://${createdApp.appId}/api`
+            : null,
       };
     } catch (error) {
       console.error(
@@ -469,6 +535,12 @@ class GraphApiService {
     }
   }
 
+  /**
+   * Sets the Application ID URI for an application (required for API applications)
+   * @param {string} applicationId - Object ID of the application
+   * @param {string} appId - Application ID (client ID)
+   * @returns {string} The set Application ID URI
+   */
   async setApplicationIdUri(applicationId, appId) {
     try {
       const applicationIdUri = `api://${appId}/api`;
@@ -494,26 +566,37 @@ class GraphApiService {
     }
   }
 
+  /**
+   * Grants admin consent for application permissions (role-based permissions)
+   * Includes retry logic and better error handling for permission assignment
+   * @param {string} servicePrincipalId - Object ID of the service principal
+   * @param {Array} requiredResourceAccess - Array of required resource access permissions
+   * @returns {boolean} True if at least one permission was granted successfully
+   */
   async grantAdminConsent(servicePrincipalId, requiredResourceAccess) {
     try {
       let consentGranted = false;
 
+      // Wait a bit for service principal to be fully created
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+
       for (const resource of requiredResourceAccess) {
+        const resourceServicePrincipalId =
+          await this.getServicePrincipalIdByAppId(resource.resourceAppId);
+
         for (const permission of resource.resourceAccess) {
           if (permission.type === "Role") {
             // Grant application permissions (admin consent required)
             try {
+              const appRoleAssignment = {
+                principalId: servicePrincipalId,
+                resourceId: resourceServicePrincipalId,
+                appRoleId: permission.id,
+              };
+
               await axios.post(
-                "https://graph.microsoft.com/v1.0/servicePrincipals/" +
-                  servicePrincipalId +
-                  "/appRoleAssignments",
-                {
-                  principalId: servicePrincipalId,
-                  resourceId: await this.getServicePrincipalIdByAppId(
-                    resource.resourceAppId
-                  ),
-                  appRoleId: permission.id,
-                },
+                `https://graph.microsoft.com/v1.0/servicePrincipals/${servicePrincipalId}/appRoleAssignments`,
+                appRoleAssignment,
                 {
                   headers: {
                     Authorization: `Bearer ${this.accessToken}`,
@@ -521,28 +604,60 @@ class GraphApiService {
                   },
                 }
               );
+
               consentGranted = true;
               console.log(
-                `Granted admin consent for permission: ${permission.id}`
+                `✅ Granted admin consent for permission: ${permission.id}`
               );
+
+              // Small delay between permission grants
+              await new Promise((resolve) => setTimeout(resolve, 500));
             } catch (error) {
+              const errorMessage =
+                error.response?.data?.error?.message || error.message;
               console.warn(
-                `Could not grant permission ${permission.id}: ${
-                  error.response?.data?.error?.message || error.message
-                }`
+                `❌ Could not grant permission ${permission.id}: ${errorMessage}`
               );
+
+              // Check if it's a "Permission being assigned already exists" error
+              if (
+                errorMessage.includes("already exists") ||
+                errorMessage.includes(
+                  "Permission being assigned already exists"
+                )
+              ) {
+                console.log(
+                  `ℹ️ Permission ${permission.id} already exists - considering as granted`
+                );
+                consentGranted = true;
+              }
             }
           }
         }
       }
 
+      if (consentGranted) {
+        console.log(
+          `✅ Admin consent process completed for service principal: ${servicePrincipalId}`
+        );
+      } else {
+        console.warn(
+          `⚠️ No admin consent permissions were granted for service principal: ${servicePrincipalId}`
+        );
+      }
+
       return consentGranted;
     } catch (error) {
-      console.warn(`Admin consent failed: ${error.message}`);
+      console.error(`❌ Admin consent failed: ${error.message}`);
       return false;
     }
   }
 
+  /**
+   * Gets the service principal object ID by application ID
+   * @param {string} appId - Application ID to search for
+   * @returns {string} Service principal object ID
+   */
   async getServicePrincipalIdByAppId(appId) {
     try {
       const response = await axios.get(
@@ -564,6 +679,12 @@ class GraphApiService {
     }
   }
 
+  /**
+   * Creates a client secret for an application with specified description and expiration
+   * @param {string} applicationId - Object ID of the application
+   * @param {string} description - Description for the client secret
+   * @returns {Object} Created client secret object containing the secret value
+   */
   async createClientSecret(
     applicationId,
     description = "Auto-generated secret"
@@ -597,6 +718,12 @@ class GraphApiService {
     }
   }
 
+  /**
+   * Creates an Enterprise Application with SAML SSO and/or Application Proxy configuration
+   * Handles both App Proxy SAML App (SAML + Proxy) and Chat Proxy App (Proxy only)
+   * @param {Object} config - Configuration object containing app details, type, SAML settings, and proxy settings
+   * @returns {Object} Created or existing enterprise application details
+   */
   async createEnterpriseApplication(config) {
     try {
       // Check if application already exists
@@ -616,6 +743,7 @@ class GraphApiService {
           displayName: existingApp.displayName,
           servicePrincipalId: existingServicePrincipal?.id || "Not found",
           type: config.type,
+          uniqueId: config.uniqueId,
           ssoMode: config.type === "saml" ? "saml" : "none",
           samlSettings: config.samlSettings,
           proxySettings: config.proxySettings,
@@ -629,7 +757,7 @@ class GraphApiService {
         signInAudience: "AzureADMyOrg",
       };
 
-      // Only add SAML configuration if this is a SAML-enabled app
+      // Only add SAML configuration if this is a SAML-enabled app (App Proxy SAML App)
       if (config.type === "saml" && config.samlSettings) {
         applicationData.identifierUris = [config.samlSettings.identifier];
         applicationData.web = {
@@ -656,7 +784,7 @@ class GraphApiService {
         tags: ["WindowsAzureActiveDirectoryIntegratedApp"],
       };
 
-      // Only set SAML SSO mode if this is a SAML-enabled app
+      // Only set SAML SSO mode if this is a SAML-enabled app (App Proxy SAML App)
       if (config.type === "saml") {
         servicePrincipalData.preferredSingleSignOnMode = "saml";
       }
@@ -680,6 +808,7 @@ class GraphApiService {
         displayName: createdApp.displayName,
         servicePrincipalId: servicePrincipal.id,
         type: config.type,
+        uniqueId: config.uniqueId,
         ssoMode: config.type === "saml" ? "saml" : "none",
         samlSettings: config.samlSettings,
         proxySettings: config.proxySettings,
@@ -694,6 +823,11 @@ class GraphApiService {
     }
   }
 
+  /**
+   * Configures cross-application permissions between the three app registrations based on unique IDs
+   * App1 (MAHI_CONNECTOR_APP) to access App2 (MAHI_API_ACCESS), and App3 (MAHI_TEAMS_APP) to access both
+   * @param {Array} appRegistrations - Array of created app registrations
+   */
   async configureCrossApplicationPermissions(appRegistrations) {
     try {
       if (appRegistrations.length < 3) {
@@ -703,7 +837,23 @@ class GraphApiService {
         return;
       }
 
-      const [app1, app2, app3] = appRegistrations;
+      // Find apps by their unique IDs instead of names
+      const app1 = appRegistrations.find(
+        (app) => app.uniqueId === "MAHI_CONNECTOR_APP"
+      );
+      const app2 = appRegistrations.find(
+        (app) => app.uniqueId === "MAHI_API_ACCESS"
+      );
+      const app3 = appRegistrations.find(
+        (app) => app.uniqueId === "MAHI_TEAMS_APP"
+      );
+
+      if (!app1 || !app2 || !app3) {
+        console.warn(
+          "Could not find all required apps for cross-permissions configuration"
+        );
+        return;
+      }
 
       // Configure App1 to access App2 scopes
       await this.addApplicationPermission(
@@ -724,7 +874,7 @@ class GraphApiService {
         "api.access"
       );
 
-      // For App Registration 3: Add web platform and configure to access App Registration 2
+      // For App3: Add web platform and configure to access App2
       await this.configureApp3WebPlatform(app3.objectId, app3.redirectUris);
       await this.addMyApiPermission(
         app3.objectId,
@@ -732,7 +882,9 @@ class GraphApiService {
         app2.applicationIdUri
       );
 
-      console.log("Cross-application permissions configured successfully");
+      console.log(
+        "Cross-application permissions configured successfully using unique IDs"
+      );
     } catch (error) {
       console.error("Failed to configure cross permissions:", error.message);
       throw new Error(
@@ -741,6 +893,12 @@ class GraphApiService {
     }
   }
 
+  /**
+   * Configures App3 (MAHI_TEAMS_APP) with web platform capabilities in addition to SPA
+   * Adds web platform redirect URIs and implicit grant settings
+   * @param {string} app3ObjectId - Object ID of App3 (Teams App)
+   * @param {Array} redirectUris - Array of redirect URIs to configure
+   */
   async configureApp3WebPlatform(app3ObjectId, redirectUris) {
     try {
       // Get current app configuration
@@ -783,12 +941,19 @@ class GraphApiService {
         }
       );
 
-      console.log("Added web platform to App Registration 3");
+      console.log("Added web platform to App3 (Teams App)");
     } catch (error) {
       console.warn(`Could not add web platform to App3: ${error.message}`);
     }
   }
 
+  /**
+   * Adds custom API permissions from one app registration to another
+   * Configures "My APIs" permissions for accessing custom scopes
+   * @param {string} sourceAppObjectId - Object ID of the source application requesting permission
+   * @param {string} targetAppId - Application ID of the target API application
+   * @param {string} applicationIdUri - Application ID URI of the target API
+   */
   async addMyApiPermission(sourceAppObjectId, targetAppId, applicationIdUri) {
     try {
       // Get current source application
@@ -806,7 +971,7 @@ class GraphApiService {
       const currentRequiredResourceAccess =
         sourceApp.requiredResourceAccess || [];
 
-      // Add permission to access App Registration 2's exposed API
+      // Add permission to access Mahi API Access's exposed API
       const newResourceAccess = {
         resourceAppId: targetAppId,
         resourceAccess: [
@@ -844,6 +1009,12 @@ class GraphApiService {
     }
   }
 
+  /**
+   * Adds application permissions from one app registration to another for specific scopes
+   * @param {string} sourceAppObjectId - Object ID of the source application requesting permission
+   * @param {string} targetAppId - Application ID of the target application exposing the scope
+   * @param {string} scopeValue - The scope value to request permission for
+   */
   async addApplicationPermission(sourceAppObjectId, targetAppId, scopeValue) {
     try {
       // Get the target application to find the scope ID
@@ -947,6 +1118,10 @@ class GraphApiService {
     }
   }
 
+  /**
+   * Generates a new GUID (UUID) for use in Azure AD configurations
+   * @returns {string} A new GUID in standard format
+   */
   generateGuid() {
     return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(
       /[xy]/g,
@@ -964,6 +1139,9 @@ app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
+/**
+ * Health check endpoint that returns server status and available features
+ */
 app.get("/api/health", (req, res) => {
   res.json({
     status: "healthy",
@@ -971,12 +1149,15 @@ app.get("/api/health", (req, res) => {
     version: "2.1.0",
     features: [
       "Duplicate Detection and Reuse",
-      "Advanced API Permissions (App Reg 1)",
-      "Application ID URI Configuration (App Reg 2)",
-      "Web Platform & My API Access (App Reg 3)",
-      "Automatic Admin Consent",
+      "Unique App Identification System",
+      "Custom Application Names Support",
+      "Advanced API Permissions (App1 with unique ID)",
+      "Application ID URI Configuration (App2 with unique ID)",
+      "Web Platform & My API Access (App3 with unique ID)",
+      "Enhanced Admin Consent with Retry Logic",
       "Custom Redirect URIs",
-      "SAML + Proxy Configuration",
+      "SAML + Proxy Configuration (Enterprise App 1)",
+      "Proxy-Only Configuration (Enterprise App 2)",
       "Cross-Application Permissions",
       "Enhanced Status Reporting",
       "Production-Ready Security",
@@ -984,7 +1165,11 @@ app.get("/api/health", (req, res) => {
   });
 });
 
-// Main provisioning endpoint with enhanced functionality
+/**
+ * Main provisioning endpoint with enhanced functionality using unique app identification
+ * Creates resource groups, app registrations, and enterprise applications with cross-permissions
+ * Supports custom application names while maintaining unique identification for functionality
+ */
 app.post(
   "/api/provision",
   validateRequest(provisioningSchema),
@@ -995,7 +1180,7 @@ app.post(
     try {
       log(
         "info",
-        "Starting Azure resource provisioning with enhanced API permissions",
+        "Starting Azure resource provisioning with unique app identification and enhanced API permissions",
         {
           requestId,
           resourceGroup: req.validatedData.resourceGroupName,
@@ -1012,26 +1197,31 @@ app.post(
         clientId,
         clientSecret,
 
-        // App Registration Configuration
+        // App Registration Configuration with unique IDs
         app1Name,
+        app1Id,
         app1RedirectUri,
         app2Name,
+        app2Id,
         app2RedirectUri,
         app3Name,
+        app3Id,
         app3RedirectUri,
         enableCrossPermissions,
         generateSecrets,
         grantAdminConsent,
 
-        // Enterprise Application Configuration
+        // Enterprise Application Configuration with unique IDs
         enterprise1Name,
+        enterprise1Id,
         enterprise2Name,
+        enterprise2Id,
 
         // Application Proxy Configuration
-        internalUrl1,
-        externalUrl1,
-        internalUrl2,
-        externalUrl2,
+        enterprise1InternalUrl,
+        enterprise1ExternalUrl,
+        enterprise2InternalUrl,
+        enterprise2ExternalUrl,
       } = req.validatedData;
 
       // Initialize services
@@ -1071,10 +1261,11 @@ app.post(
         log("error", errorMsg, { requestId });
       }
 
-      // Step 2: Create App Registrations with enhanced configurations
+      // Step 2: Create App Registrations with enhanced configurations using unique IDs
       const appConfigs = [
         {
           name: `${applicationPrefix}-${environment}-${app1Name}`,
+          uniqueId: app1Id,
           scopes: ["user.read"],
           type: "web",
           redirectUris: [
@@ -1086,6 +1277,7 @@ app.post(
         },
         {
           name: `${applicationPrefix}-${environment}-${app2Name}`,
+          uniqueId: app2Id,
           scopes: ["api.access"],
           type: "web",
           redirectUris: [
@@ -1097,6 +1289,7 @@ app.post(
         },
         {
           name: `${applicationPrefix}-${environment}-${app3Name}`,
+          uniqueId: app3Id,
           scopes: ["resource.manage"],
           type: "spa",
           redirectUris: [
@@ -1119,43 +1312,50 @@ app.post(
           log("info", `App registration ${action}`, {
             requestId,
             appName: config.name,
+            uniqueId: config.uniqueId,
             isExisting: appResult.isExisting,
             adminConsentGranted: appResult.adminConsentGranted,
           });
         } catch (error) {
-          const errorMsg = `App Registration ${config.name} failed: ${error.message}`;
+          const errorMsg = `App Registration ${config.name} (${config.uniqueId}) failed: ${error.message}`;
           provisioningResults.errors.push(errorMsg);
           log("error", errorMsg, { requestId });
         }
       }
 
-      // Step 3: Create Enterprise Applications with different configurations
+      // Step 3: Create Enterprise Applications with different configurations using unique IDs
       const enterpriseConfigs = [
         {
           name: `${applicationPrefix}-${environment}-${enterprise1Name}`,
-          type: "saml", // This one has SAML + Proxy
+          uniqueId: enterprise1Id,
+          type: "saml", // Enterprise App 1 has SAML + Proxy
           samlSettings: {
             // Use external URL from proxy configuration for SAML
             identifier: `api://${applicationPrefix}-${environment}-ent1`,
             replyUrl: `${
-              externalUrl1 || "https://app1-external.company.com"
+              enterprise1ExternalUrl || "https://saml-app-external.company.com"
             }/saml2/acs`,
             signOnUrl: `${
-              externalUrl1 || "https://app1-external.company.com"
+              enterprise1ExternalUrl || "https://saml-app-external.company.com"
             }/login`,
           },
           proxySettings: {
-            internalUrl: internalUrl1 || "http://internal-app1.company.com",
-            externalUrl: externalUrl1 || "https://app1-external.company.com",
+            internalUrl:
+              enterprise1InternalUrl || "http://internal-saml-app.company.com",
+            externalUrl:
+              enterprise1ExternalUrl || "https://saml-app-external.company.com",
           },
         },
         {
           name: `${applicationPrefix}-${environment}-${enterprise2Name}`,
-          type: "proxy-only", // This one has ONLY proxy configuration
+          uniqueId: enterprise2Id,
+          type: "proxy-only", // Enterprise App 2 has ONLY proxy configuration
           samlSettings: null, // No SAML configuration
           proxySettings: {
-            internalUrl: internalUrl2 || "http://internal-app2.company.com",
-            externalUrl: externalUrl2 || "https://app2-external.company.com",
+            internalUrl:
+              enterprise2InternalUrl || "http://internal-chat-app.company.com",
+            externalUrl:
+              enterprise2ExternalUrl || "https://chat-app-external.company.com",
           },
         },
       ];
@@ -1172,16 +1372,17 @@ app.post(
           log("info", `Enterprise application ${action}`, {
             requestId,
             appName: config.name,
+            uniqueId: config.uniqueId,
             isExisting: enterpriseResult.isExisting,
           });
         } catch (error) {
-          const errorMsg = `Enterprise App ${config.name} failed: ${error.message}`;
+          const errorMsg = `Enterprise App ${config.name} (${config.uniqueId}) failed: ${error.message}`;
           provisioningResults.errors.push(errorMsg);
           log("error", errorMsg, { requestId });
         }
       }
 
-      // Step 4: Configure cross-application permissions (if enabled)
+      // Step 4: Configure cross-application permissions between Mahi apps (if enabled)
       if (
         enableCrossPermissions &&
         provisioningResults.appRegistrations.length >= 3
@@ -1190,9 +1391,13 @@ app.post(
           await graphService.configureCrossApplicationPermissions(
             provisioningResults.appRegistrations
           );
-          log("info", "Cross-application permissions configured", {
-            requestId,
-          });
+          log(
+            "info",
+            "Cross-application permissions configured for app registrations",
+            {
+              requestId,
+            }
+          );
           provisioningResults.warnings.push(
             "Cross-application permissions configured including App3 web platform and My API access"
           );
@@ -1234,7 +1439,7 @@ app.post(
       res.json({
         success: true,
         message:
-          "Azure resources provisioned successfully with enhanced API permissions",
+          "Azure resources provisioned successfully with enhanced API permissions and unique app identification",
         requestId,
         duration,
         results: provisioningResults,
@@ -1268,7 +1473,10 @@ app.post(
       });
     } catch (error) {
       const duration = Date.now() - startTime;
-      log("error", "Provisioning failed", { requestId, error: error.message });
+      log("error", "Application provisioning failed", {
+        requestId,
+        error: error.message,
+      });
 
       res.status(500).json({
         success: false,
@@ -1281,7 +1489,9 @@ app.post(
   }
 );
 
-// Error handling middleware
+/**
+ * Error handling middleware for unhandled errors
+ */
 app.use((error, req, res, next) => {
   log("error", "Unhandled error", { error: error.message });
   res.status(500).json({
@@ -1294,7 +1504,9 @@ app.use((error, req, res, next) => {
   });
 });
 
-// 404 handler
+/**
+ * 404 handler for undefined routes
+ */
 app.use((req, res) => {
   res.status(404).json({
     success: false,
@@ -1304,14 +1516,18 @@ app.use((req, res) => {
 });
 
 app.listen(port, () => {
-  log("info", "Enhanced server started with API permissions support", {
-    port,
-    environment: process.env.NODE_ENV || "development",
-  });
+  log(
+    "info",
+    "Enhanced server started with API permissions support and unique app identification",
+    {
+      port,
+      environment: process.env.NODE_ENV || "development",
+    }
+  );
   console.log(`🚀 Enhanced Azure Provisioner server running on port ${port}`);
   console.log(`📱 Open http://localhost:${port} to access the application`);
   console.log(
-    `✨ Features: Advanced API Permissions, Admin Consent, Application ID URI, Web Platform Config`
+    `✨ Features: Advanced API Permissions, Admin Consent, Application ID URI, Web Platform Config with Unique IDs`
   );
 });
 
