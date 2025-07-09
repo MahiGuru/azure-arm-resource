@@ -6,10 +6,17 @@ app_registrations:
       - "https://myapp-dev-app1.azurewebsites.net/signin-oidc"
     scopes:
       - "user.read"
+      - "openid"
+      - "profile"
+      - "email"
     permissions:
       - resource: "Microsoft Graph"
         permission: "User.Read"
         type: "Scope"
+      - resource: "Microsoft Graph"
+        permission: "User.ReadBasic.All"
+        type: "Scope"
+    expose_api: false
   
   - name: "mahi-api-access"
     type: "web"
@@ -17,22 +24,113 @@ app_registrations:
       - "https://myapp-dev-app2.azurewebsites.net/signin-oidc"
     scopes:
       - "api.access"
+      - "api.read"
+      - "api.write"
     expose_api: true
+    exposed_scopes:
+      - name: "api.access"
+        description: "Access to API endpoints"
+        consent_type: "Admin"
+      - name: "api.read"
+        description: "Read access to API"
+        consent_type: "User"
+      - name: "api.write"
+        description: "Write access to API"
+        consent_type: "Admin"
+    app_roles:
+      - name: "ApiUser"
+        description: "Users who can access the API"
+        allowed_member_types: ["User"]
+        value: "ApiUser"
+      - name: "ApiAdmin"
+        description: "Administrators who can manage the API"
+        allowed_member_types: ["User"]
+        value: "ApiAdmin"
+    permissions:
+      - resource: "Microsoft Graph"
+        permission: "User.Read"
+        type: "Scope"
   
   - name: "mahi-teams-app"
     type: "spa"
     redirect_uris:
       - "https://myapp-dev-app3.azurewebsites.net/auth/callback"
+      - "https://token.botframework.com/.auth/web/redirect"
     scopes:
       - "resource.manage"
+      - "teams.read"
+      - "teams.write"
+    expose_api: false
+    permissions:
+      - resource: "Microsoft Graph"
+        permission: "User.Read"
+        type: "Scope"
+      - resource: "Microsoft Graph"
+        permission: "Team.ReadBasic.All"
+        type: "Scope"
+      - resource: "Microsoft Graph"
+        permission: "TeamsTab.ReadWrite.All"
+        type: "Scope"
+    enable_teams_sso: true
+    teams_manifest:
+      version: "1.16"
+      manifestVersion: "1.16"
+      id: "{{TEAMS_APP_ID}}"
+      packageName: "com.company.mahiteamsapp"
+      developer:
+        name: "Mahipal Gurjala"
+        websiteUrl: "https://myapp-dev-app3.azurewebsites.net"
+        privacyUrl: "https://myapp-dev-app3.azurewebsites.net/privacy"
+        termsOfUseUrl: "https://myapp-dev-app3.azurewebsites.net/terms"
 
 enterprise_applications:
   - name: "app-proxy-saml-app"
     type: "saml"
     internal_url: "http://internal-saml-app.company.com"
     external_url: "https://saml-app-external.company.com"
+    certificate_path: "./certificates/saml-cert.pem"
+    saml_settings:
+      single_sign_on_url: "https://saml-app-external.company.com/sso"
+      entity_id: "https://saml-app-external.company.com"
+      name_id_format: "urn:oasis:names:tc:SAML:2.0:nameid-format:persistent"
+      attributes:
+        - name: "givenname"
+          namespace: "http://schemas.xmlsoap.org/ws/2005/05/identity/claims"
+          source: "user.givenname"
+        - name: "surname"
+          namespace: "http://schemas.xmlsoap.org/ws/2005/05/identity/claims"
+          source: "user.surname"
+        - name: "emailaddress"
+          namespace: "http://schemas.xmlsoap.org/ws/2005/05/identity/claims"
+          source: "user.mail"
   
   - name: "chat-proxy-app"
     type: "proxy-only"
     internal_url: "http://internal-chat-app.company.com"
     external_url: "https://chat-app-external.company.com"
+    connector_group: "default"
+    pre_authentication: "passthrough"
+    headers:
+      - name: "X-Forwarded-Proto"
+        value: "https"
+      - name: "X-Forwarded-Host"
+        value: "chat-app-external.company.com"
+
+# Bot Configuration
+bot_registration:
+  name: "mahi-teams-bot"
+  display_name: "Mahi Teams Bot"
+  description: "Teams bot for Mahi application"
+  messaging_endpoint: "https://myapp-dev-app3.azurewebsites.net/api/messages"
+  calling_endpoint: "https://myapp-dev-app3.azurewebsites.net/api/calls"
+  channels:
+    - "msteams"
+    - "webchat"
+  capabilities:
+    - "bot"
+    - "messaging"
+    - "calling"
+  scopes:
+    - "team"
+    - "personal"
+    - "groupchat"
