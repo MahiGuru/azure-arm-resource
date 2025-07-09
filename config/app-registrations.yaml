@@ -1,0 +1,38 @@
+# App Registration Configurations
+app_registrations:
+  - name: "mahi-connector-app"
+    type: "web"
+    redirect_uris:
+      - "https://myapp-dev-app1.azurewebsites.net/signin-oidc"
+    scopes:
+      - "user.read"
+    permissions:
+      - resource: "Microsoft Graph"
+        permission: "User.Read"
+        type: "Scope"
+  
+  - name: "mahi-api-access"
+    type: "web"
+    redirect_uris:
+      - "https://myapp-dev-app2.azurewebsites.net/signin-oidc"
+    scopes:
+      - "api.access"
+    expose_api: true
+  
+  - name: "mahi-teams-app"
+    type: "spa"
+    redirect_uris:
+      - "https://myapp-dev-app3.azurewebsites.net/auth/callback"
+    scopes:
+      - "resource.manage"
+
+enterprise_applications:
+  - name: "app-proxy-saml-app"
+    type: "saml"
+    internal_url: "http://internal-saml-app.company.com"
+    external_url: "https://saml-app-external.company.com"
+  
+  - name: "chat-proxy-app"
+    type: "proxy-only"
+    internal_url: "http://internal-chat-app.company.com"
+    external_url: "https://chat-app-external.company.com"

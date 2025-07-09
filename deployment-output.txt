@@ -1,0 +1,15 @@
+App: mg-dev-mahi-connector-app
+App ID: 5ab44a56-4ab7-453e-929d-418258d1e3d4
+Service Principal ID: 3f323a51-02c1-456e-8743-e4c2858c9b58
+Client Secret: 
+---
+App: mg-dev-mahi-api-access
+App ID: cfdd2390-7114-451b-a518-d9b6e968ce83
+Service Principal ID: b7a0f643-e1c1-45e7-b33b-67050840f2bb
+Client Secret: 
+---
+App: mg-dev-mahi-teams-app
+App ID: 0f01674b-eca6-4ba0-8622-b0cb318f2389
+Service Principal ID: 0b898921-86ec-43a6-8d3a-05bc453d1fca
+Client Secret: 
+---

@@ -1,0 +1,12 @@
+environment:
+  name: "dev"
+  location: "East US"
+  resource_group: "rg-mahi-dev"
+  application_prefix: "mg"
+  tenant_id: "dea9be92-2f36-4dbd-a378-88241cc61e2e"
+
+tags:
+  Environment: "development"
+  Project: "AB"
+  Owner: "Mahipal"
+  CreatedBy: "Mahipal Gurjala"
