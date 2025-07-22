@@ -1,0 +1,16 @@
+=== Application Diagnosis ===
+Generated on: Wed Jul  9 17:06:32 IST 2025
+
+SAML App Registration: MISSING
+
+Application Proxy App Registration: EXISTS (d5f6a81b-e47e-4acd-bc13-e5a897a4fcf3)
+Application Proxy Service Principal: MISSING
+
+=== Application Diagnosis ===
+Generated on: Wed Jul  9 17:07:02 IST 2025
+
+SAML App Registration: MISSING
+
+Application Proxy App Registration: EXISTS (d5f6a81b-e47e-4acd-bc13-e5a897a4fcf3)
+Application Proxy Service Principal: MISSING
+

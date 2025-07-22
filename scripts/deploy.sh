@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# Complete Azure Resource Deployment Script
+# This script creates app registrations, enterprise applications, bot registrations, and Teams apps
+# Includes all fixes for domain verification and enterprise application creation
+
 # Load configuration
 CONFIG_DIR="./config"
 ENVIRONMENT_FILE="$CONFIG_DIR/environment.yaml"
@@ -48,6 +52,17 @@ parse_yaml() {
    }'
 }
 
+# Function to confirm action
+confirm_action() {
+    local message=$1
+    read -p "$message (y/N): " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        return 0
+    fi
+    return 1
+}
+
 # Initialize output file
 init_output() {
     echo "Azure Resource Deployment Output" > $OUTPUT_FILE
@@ -56,11 +71,11 @@ init_output() {
     echo "" >> $OUTPUT_FILE
 }
 
-# Function to clean up existing resources before deployment
+# Function to cleanup existing resources before deployment
 cleanup_existing_resources() {
     log_step "Cleaning up existing resources to prevent conflicts..."
     
-    local apps=("mahi-connector-app" "mahi-api-access" "mahi-teams-app")
+    local apps=("mahi-connector-app" "mahi-api-access" "mahi-teams-app" "app-proxy-saml-app" "chat-proxy-app")
     
     for app_name in "${apps[@]}"; do
         local full_name="$APP_PREFIX-$ENVIRONMENT-$app_name"
@@ -106,63 +121,6 @@ cleanup_existing_resources() {
     fi
 }
 
-# Function to confirm action
-confirm_action() {
-    local message=$1
-    read -p "$message (y/N): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        return 0
-    fi
-    return 1
-}
-
-# Main deployment function
-deploy_resources() {
-    log_step "Starting Azure resource deployment..."
-    
-    # Initialize output file
-    init_output
-    
-    # Parse environment configuration
-    eval $(parse_yaml $ENVIRONMENT_FILE "env_")
-    
-    RESOURCE_GROUP=$env_environment_resource_group
-    LOCATION=$env_environment_location
-    APP_PREFIX=$env_environment_application_prefix
-    ENVIRONMENT=$env_environment_name
-    TENANT_ID=$env_environment_tenant_id
-    
-    log_info "Environment: $ENVIRONMENT"
-    log_info "Resource Group: $RESOURCE_GROUP"
-    log_info "Location: $LOCATION"
-    log_info "Tenant ID: $TENANT_ID"
-    
-    # Ask if user wants to clean up existing resources
-    echo ""
-    if confirm_action "Do you want to clean up existing resources to prevent conflicts?"; then
-        cleanup_existing_resources
-    fi
-    
-    # Step 1: Create Resource Group
-    create_resource_group
-    
-    # Step 2: Create App Registrations
-    create_app_registrations
-    
-    # Step 3: Create Enterprise Applications
-    create_enterprise_applications
-    
-    # Step 4: Create Bot Registration
-    create_bot_registration
-    
-    # Step 5: Configure Teams App
-    configure_teams_app
-    
-    log_step "Deployment completed successfully!"
-    log_info "Check $OUTPUT_FILE for detailed output"
-}
-
 # Function to create resource group
 create_resource_group() {
     log_step "Creating resource group: $RESOURCE_GROUP"
@@ -173,7 +131,7 @@ create_resource_group() {
         --tags Environment=$ENVIRONMENT Project=AB Owner=Mahipal CreatedBy=azure-cli-templates
     
     if [ $? -eq 0 ]; then
-        log_info "Resource group created successfully"
+        log_info "✓ Resource group created successfully"
         echo "Resource Group: $RESOURCE_GROUP" >> $OUTPUT_FILE
         echo "Location: $LOCATION" >> $OUTPUT_FILE
         echo "" >> $OUTPUT_FILE
@@ -183,7 +141,7 @@ create_resource_group() {
     fi
 }
 
-# Function to create app registrations
+# Function to create standard app registrations (not enterprise apps)
 create_app_registrations() {
     log_step "Creating app registrations..."
     
@@ -197,7 +155,7 @@ create_app_registrations() {
     create_app_registration "mahi-teams-app" "spa" "https://$APP_PREFIX-$ENVIRONMENT-app3.azurewebsites.net/auth/callback"
 }
 
-# Enhanced function to create app registration
+# Function to create a single app registration
 create_app_registration() {
     local app_name=$1
     local app_type=$2
@@ -220,7 +178,7 @@ create_app_registration() {
     
     log_info "Created app registration: $full_name (App ID: $app_id)"
     
-    # Configure redirect URIs and enable tokens based on app type
+    # Configure redirect URIs based on app type
     if [ "$app_type" == "web" ]; then
         az ad app update \
             --id $app_id \
@@ -243,32 +201,15 @@ create_app_registration() {
         expose_api_scopes $app_id $app_name
     fi
     
-    # Create service principal (check if it already exists)
-    local sp_id=$(az ad sp list --display-name "$full_name" --query "[0].id" -o tsv)
+    # Create service principal
+    local sp_id=$(az ad sp create --id $app_id --query id -o tsv)
     
-    if [ -z "$sp_id" ] || [ "$sp_id" == "null" ]; then
-        sp_id=$(az ad sp create \
-            --id $app_id \
-            --query id -o tsv)
-        
-        if [ $? -eq 0 ]; then
-            log_info "Created service principal for $full_name (SP ID: $sp_id)"
-        else
-            log_warn "Service principal may already exist, trying to get existing one"
-            sp_id=$(az ad sp list --display-name "$full_name" --query "[0].id" -o tsv)
-        fi
-    else
-        log_info "Service principal already exists for $full_name (SP ID: $sp_id)"
-    fi
-    
-    # Create client secret (use correct syntax for current Azure CLI)
+    # Create client secret
     local secret=$(az ad app credential reset \
         --id $app_id \
         --append \
         --display-name "Auto-generated secret" \
         --query password -o tsv)
-    
-    log_info "Generated client secret for $full_name"
     
     # Save configuration to output file
     echo "=== App Registration: $full_name ===" >> $OUTPUT_FILE
@@ -278,6 +219,8 @@ create_app_registration() {
     echo "Redirect URI: $redirect_uri" >> $OUTPUT_FILE
     echo "Type: $app_type" >> $OUTPUT_FILE
     echo "" >> $OUTPUT_FILE
+    
+    log_info "✓ App registration created successfully: $full_name"
 }
 
 # Function to configure API permissions
@@ -287,53 +230,31 @@ configure_api_permissions() {
     
     log_info "Configuring API permissions for $app_name"
     
-    # Get Microsoft Graph API ID
+    # Microsoft Graph API ID
     local graph_api_id="00000003-0000-0000-c000-000000000000"
     
     # Define permissions based on app type
     case $app_name in
         "mahi-connector-app")
-            # Add User.Read permission
-            az ad app permission add \
-                --id $app_id \
-                --api $graph_api_id \
-                --api-permissions e1fe6dd8-ba31-4d61-89e7-88639da4683d=Scope
-            
-            # Add User.ReadBasic.All permission
-            az ad app permission add \
-                --id $app_id \
-                --api $graph_api_id \
-                --api-permissions b340eb25-3456-403f-be2f-af7a0d370277=Scope
+            # User.Read and User.ReadBasic.All
+            az ad app permission add --id $app_id --api $graph_api_id --api-permissions e1fe6dd8-ba31-4d61-89e7-88639da4683d=Scope
+            az ad app permission add --id $app_id --api $graph_api_id --api-permissions b340eb25-3456-403f-be2f-af7a0d370277=Scope
             ;;
         "mahi-api-access")
-            # Add User.Read permission
-            az ad app permission add \
-                --id $app_id \
-                --api $graph_api_id \
-                --api-permissions e1fe6dd8-ba31-4d61-89e7-88639da4683d=Scope
+            # User.Read
+            az ad app permission add --id $app_id --api $graph_api_id --api-permissions e1fe6dd8-ba31-4d61-89e7-88639da4683d=Scope
             ;;
         "mahi-teams-app")
-            # Add User.Read permission
-            az ad app permission add \
-                --id $app_id \
-                --api $graph_api_id \
-                --api-permissions e1fe6dd8-ba31-4d61-89e7-88639da4683d=Scope
-            
-            # Add Team.ReadBasic.All permission
-            az ad app permission add \
-                --id $app_id \
-                --api $graph_api_id \
-                --api-permissions 485be79e-c497-4b35-9400-0e3fa7f2a5d4=Scope
+            # User.Read and Team.ReadBasic.All
+            az ad app permission add --id $app_id --api $graph_api_id --api-permissions e1fe6dd8-ba31-4d61-89e7-88639da4683d=Scope
+            az ad app permission add --id $app_id --api $graph_api_id --api-permissions 485be79e-c497-4b35-9400-0e3fa7f2a5d4=Scope
             ;;
     esac
     
-    # Wait for permissions to propagate
+    # Grant admin consent
     sleep 10
-    
-    # Grant admin consent with error handling
-    log_info "Granting admin consent for $app_name"
     az ad app permission admin-consent --id $app_id 2>/dev/null || {
-        log_warn "Admin consent failed for $app_name - this may need to be done manually in Azure Portal"
+        log_warn "Admin consent failed for $app_name - may need manual approval"
     }
 }
 
@@ -345,20 +266,14 @@ expose_api_scopes() {
     log_info "Exposing API scopes for $app_name"
     
     # Set application ID URI
-    local app_id_uri="api://$app_id"
-    az ad app update --id $app_id --identifier-uris $app_id_uri
+    az ad app update --id $app_id --identifier-uris "api://$app_id"
     
-    # Wait for app to be ready
-    sleep 5
-    
-    # Generate UUIDs for scopes and roles
+    # Generate UUIDs for scopes
     local scope_access_id=$(uuidgen)
     local scope_read_id=$(uuidgen)
     local scope_write_id=$(uuidgen)
-    local role_user_id=$(uuidgen)
-    local role_admin_id=$(uuidgen)
     
-    # Create a temporary JSON file for OAuth2 permissions
+    # Create OAuth2 permissions JSON
     cat > /tmp/oauth2_permissions.json << EOF
 [
     {
@@ -394,177 +309,197 @@ expose_api_scopes() {
 ]
 EOF
     
-    # Create a temporary JSON file for app roles
-    cat > /tmp/app_roles.json << EOF
-[
-    {
-        "allowedMemberTypes": ["User"],
-        "description": "Users who can access the API",
-        "displayName": "ApiUser",
-        "id": "$role_user_id",
-        "isEnabled": true,
-        "value": "ApiUser"
-    },
-    {
-        "allowedMemberTypes": ["User"],
-        "description": "Administrators who can manage the API",
-        "displayName": "ApiAdmin",
-        "id": "$role_admin_id",
-        "isEnabled": true,
-        "value": "ApiAdmin"
-    }
-]
-EOF
-    
-    # Update app with OAuth2 permissions using file
+    # Update app with OAuth2 permissions
     az ad app update --id $app_id --set api.oauth2PermissionScopes@/tmp/oauth2_permissions.json
     
-    # Wait for permissions to propagate
-    sleep 5
-    
-    # Update app with app roles using file
-    az ad app update --id $app_id --set appRoles@/tmp/app_roles.json
-    
-    # Clean up temporary files
-    rm -f /tmp/oauth2_permissions.json /tmp/app_roles.json
-    
-    log_info "API scopes exposed for $app_name"
+    # Clean up
+    rm -f /tmp/oauth2_permissions.json
 }
 
-# Function to create enterprise applications
+# FIXED: Function to create SAML enterprise application
+create_saml_enterprise_application() {
+    local app_name="app-proxy-saml-app"
+    local full_name="$APP_PREFIX-$ENVIRONMENT-$app_name"
+    
+    log_step "Creating SAML enterprise application: $full_name"
+    
+    # Step 1: Create app registration WITHOUT identifier URIs initially
+    local app_id=$(az ad app create \
+        --display-name "$full_name" \
+        --sign-in-audience "AzureADMyOrg" \
+        --query appId -o tsv | tr -d '\r')
+
+    if [ -z "$app_id" ]; then
+        log_error "Failed to create app registration for SAML app"
+        return 1
+    fi
+
+    log_info "Created app registration: $app_id"
+
+    # Step 2: Retry loop for service principal creation
+    local sp_id=""
+    for attempt in {1..5}; do
+        log_info "Attempt $attempt to create service principal..."
+        sp_id=$(az ad sp create --id "$app_id" --query objectId -o tsv 2>/dev/null | tr -d '\r')
+
+        if [ -n "$sp_id" ]; then
+            break
+        fi
+
+        log_info "Waiting 5 seconds before retry..."
+        sleep 5
+    done
+
+    if [ -z "$sp_id" ]; then
+        log_error "Failed to create service principal for SAML app"
+        return 1
+    fi
+
+    log_info "Created service principal (enterprise app): $sp_id"
+
+    # Step 3: Configure service principal for SAML SSO
+    az ad sp update \
+        --id "$sp_id" \
+        --set preferredSingleSignOnMode=saml
+
+    # Step 4: Tag as enterprise application
+    az ad sp update \
+        --id "$sp_id" \
+        --set tags='["Enterprise","SAML","SSO","CustomApp"]'
+
+    
+    # Step 5: Set identifier URI using SAFE format (no domain verification needed)
+    local api_uri="api://$app_id"
+    az ad app update --id $app_id --identifier-uris "$api_uri"
+    
+    log_info "✓ Set identifier URI to: $api_uri"
+    
+    # Step 6: Configure redirect URIs
+    az ad app update \
+        --id $app_id \
+        --web-redirect-uris "https://saml-app-external.company.com/sso" "https://saml-app-external.company.com/acs"
+    
+    log_info "✓ SAML enterprise application created successfully"
+    
+    # Save configuration
+    cat >> $OUTPUT_FILE << EOF
+=== SAML Enterprise Application: $full_name ===
+App ID: $app_id
+Service Principal ID: $sp_id
+Entity ID: $api_uri
+ACS URL: https://saml-app-external.company.com/acs
+SSO URL: https://saml-app-external.company.com/sso
+Type: Enterprise Application (SAML)
+Location: Azure AD > Enterprise Applications > $full_name
+
+Manual Configuration Required:
+1. Go to Azure AD > Enterprise Applications > $full_name
+2. Configure Single Sign-On > SAML
+3. Basic SAML Configuration:
+   - Entity ID: $api_uri (already set)
+   - ACS URL: https://saml-app-external.company.com/acs
+   - Sign-on URL: https://saml-app-external.company.com
+4. Download certificate and configure your app
+5. Assign users and groups
+
+EOF
+    
+    return 0
+}
+
+# FIXED: Function to create Application Proxy enterprise application
+create_proxy_enterprise_application() {
+    local app_name="chat-proxy-app"
+    local full_name="$APP_PREFIX-$ENVIRONMENT-$app_name"
+    
+    log_step "Creating Application Proxy enterprise application: $full_name"
+    
+    # Step 1: Create app registration
+    local app_id=$(az ad app create \
+        --display-name "$full_name" \
+        --sign-in-audience "AzureADMyOrg" \
+        --query appId -o tsv)
+    
+    if [ -z "$app_id" ]; then
+        log_error "Failed to create app registration for Application Proxy app"
+        return 1
+    fi
+    
+    log_info "Created app registration: $app_id"
+    
+    # Step 2: Create service principal IMMEDIATELY (this makes it an enterprise app)
+    local sp_id=$(az ad sp create --id $app_id --query objectId -o tsv)
+    
+    if [ -z "$sp_id" ]; then
+        log_error "Failed to create service principal for Application Proxy app"
+        return 1
+    fi
+    
+    log_info "Created service principal (enterprise app): $sp_id"
+    
+    # Step 3: Configure service principal for Application Proxy
+    az ad sp update \
+        --id $sp_id \
+        --set preferredSingleSignOnMode=integrated
+    
+    # Step 4: Tag as enterprise application
+    az ad sp update \
+        --id $sp_id \
+        --set tags='["Enterprise","ApplicationProxy","OnPrem","CustomApp"]'
+    
+    # Step 5: Configure redirect URIs (no domain verification needed for these)
+    az ad app update \
+        --id $app_id \
+        --web-redirect-uris "https://chat-app-external.company.com/auth" "https://chat-app-external.company.com/signin-oidc" \
+        --enable-id-token-issuance true \
+        --enable-access-token-issuance true
+    
+    log_info "✓ Application Proxy enterprise application created successfully"
+    
+    # Save configuration
+    cat >> $OUTPUT_FILE << EOF
+=== Application Proxy Enterprise Application: $full_name ===
+App ID: $app_id
+Service Principal ID: $sp_id
+Internal URL: http://internal-chat-app.company.com
+External URL: https://chat-app-external.company.com
+Type: Enterprise Application (Application Proxy)
+Location: Azure AD > Enterprise Applications > $full_name
+
+Manual Configuration Required:
+1. Install Application Proxy connector if not already installed
+2. Go to Azure AD > Enterprise Applications > $full_name
+3. Configure Application Proxy:
+   - Internal URL: http://internal-chat-app.company.com
+   - External URL: https://chat-app-external.company.com
+   - Pre-authentication: Azure Active Directory
+   - Select connector group
+4. Configure Single Sign-On if needed
+5. Assign users and groups
+
+EOF
+    
+    return 0
+}
+
+# FIXED: Main function to create enterprise applications
 create_enterprise_applications() {
     log_step "Creating enterprise applications..."
     
-    # Use the enterprise application wrapper script for proper enterprise app creation
-    if [ -f "scripts/create-enterprise-apps.sh" ]; then
-        log_info "Using enterprise application wrapper script..."
-        ./scripts/create-enterprise-apps.sh
-        
-        if [ $? -eq 0 ]; then
-            log_info "✓ Enterprise applications created successfully"
-        else
-            log_warn "Enterprise application wrapper failed, using fallback method"
-            create_enterprise_apps_fallback
-        fi
-    else
-        log_warn "Enterprise application wrapper not found, using fallback method"
-        create_enterprise_apps_fallback
-    fi
-}
-
-# Fallback method for enterprise applications
-create_enterprise_apps_fallback() {
-    log_info "Using fallback method for enterprise applications..."
-    
-    # SAML Enterprise App (fallback)
-    create_saml_enterprise_app_fallback "app-proxy-saml-app" "http://internal-saml-app.company.com" "https://saml-app-external.company.com"
-    
-    # Application Proxy Enterprise App (fallback)
-    create_proxy_enterprise_app_fallback "chat-proxy-app" "http://internal-chat-app.company.com" "https://chat-app-external.company.com"
-}
-
-# Fallback SAML enterprise application creation
-create_saml_enterprise_app_fallback() {
-    local app_name=$1
-    local internal_url=$2
-    local external_url=$3
-    local full_name="$APP_PREFIX-$ENVIRONMENT-$app_name"
-    
-    log_info "Creating SAML enterprise application (fallback): $full_name"
-    
-    # Create app registration
-    local app_id=$(az ad app create \
-        --display-name "$full_name" \
-        --sign-in-audience "AzureADMyOrg" \
-        --web-redirect-uris "$external_url/sso" \
-        --identifier-uris "$external_url" \
-        --query appId -o tsv)
-    
-    if [ -z "$app_id" ]; then
-        log_error "Failed to create SAML app: $full_name"
+    # Create SAML enterprise application
+    if ! create_saml_enterprise_application; then
+        log_error "Failed to create SAML enterprise application"
         return 1
     fi
     
-    # Create service principal
-    local sp_object_id=$(az ad sp create \
-        --id $app_id \
-        --query objectId -o tsv)
-    
-    if [ -z "$sp_object_id" ]; then
-        log_error "Failed to create service principal: $full_name"
+    # Create Application Proxy enterprise application
+    if ! create_proxy_enterprise_application; then
+        log_error "Failed to create Application Proxy enterprise application"
         return 1
     fi
     
-    # Configure for SAML SSO
-    az ad sp update \
-        --id $sp_object_id \
-        --set preferredSingleSignOnMode=saml \
-        --set tags='["Enterprise","SAML","HideApp"]'
-    
-    log_info "✓ Created SAML enterprise application: $full_name"
-    
-    # Save configuration
-    echo "=== SAML Enterprise Application (Fallback): $full_name ===" >> $OUTPUT_FILE
-    echo "App ID: $app_id" >> $OUTPUT_FILE
-    echo "Service Principal Object ID: $sp_object_id" >> $OUTPUT_FILE
-    echo "Internal URL: $internal_url" >> $OUTPUT_FILE
-    echo "External URL: $external_url" >> $OUTPUT_FILE
-    echo "SAML SSO URL: $external_url/sso" >> $OUTPUT_FILE
-    echo "Entity ID: $external_url" >> $OUTPUT_FILE
-    echo "Note: May appear under App Registrations instead of Enterprise Applications" >> $OUTPUT_FILE
-    echo "" >> $OUTPUT_FILE
-}
-
-# Fallback Application Proxy enterprise application creation
-create_proxy_enterprise_app_fallback() {
-    local app_name=$1
-    local internal_url=$2
-    local external_url=$3
-    local full_name="$APP_PREFIX-$ENVIRONMENT-$app_name"
-    
-    log_info "Creating Application Proxy enterprise application (fallback): $full_name"
-    
-    # Create app registration
-    local app_id=$(az ad app create \
-        --display-name "$full_name" \
-        --sign-in-audience "AzureADMyOrg" \
-        --web-redirect-uris "$external_url/auth" \
-        --enable-id-token-issuance true \
-        --enable-access-token-issuance true \
-        --query appId -o tsv)
-    
-    if [ -z "$app_id" ]; then
-        log_error "Failed to create Application Proxy app: $full_name"
-        return 1
-    fi
-    
-    # Create service principal
-    local sp_object_id=$(az ad sp create \
-        --id $app_id \
-        --query objectId -o tsv)
-    
-    if [ -z "$sp_object_id" ]; then
-        log_error "Failed to create service principal: $full_name"
-        return 1
-    fi
-    
-    # Configure for Application Proxy
-    az ad sp update \
-        --id $sp_object_id \
-        --set preferredSingleSignOnMode=integrated \
-        --set tags='["Enterprise","ApplicationProxy","WebApp"]'
-    
-    log_info "✓ Created Application Proxy enterprise application: $full_name"
-    
-    # Save configuration
-    echo "=== Application Proxy Enterprise Application (Fallback): $full_name ===" >> $OUTPUT_FILE
-    echo "App ID: $app_id" >> $OUTPUT_FILE
-    echo "Service Principal Object ID: $sp_object_id" >> $OUTPUT_FILE
-    echo "Internal URL: $internal_url" >> $OUTPUT_FILE
-    echo "External URL: $external_url" >> $OUTPUT_FILE
-    echo "Note: May appear under App Registrations instead of Enterprise Applications" >> $OUTPUT_FILE
-    echo "Complete configuration required in Azure Portal" >> $OUTPUT_FILE
-    echo "" >> $OUTPUT_FILE
+    log_info "✓ All enterprise applications created successfully"
+    return 0
 }
 
 # Function to create bot registration
@@ -585,7 +520,7 @@ create_bot_registration() {
     
     log_info "Creating bot registration: $bot_name"
     
-    # Create bot registration using Azure Bot Service
+    # Create bot registration
     local bot_resource_id=$(az bot create \
         --resource-group $RESOURCE_GROUP \
         --name $bot_name \
@@ -611,7 +546,7 @@ create_bot_registration() {
     echo "Messaging Endpoint: $messaging_endpoint" >> $OUTPUT_FILE
     echo "" >> $OUTPUT_FILE
     
-    log_info "Bot registration created successfully"
+    log_info "✓ Bot registration created successfully"
 }
 
 # Function to configure bot channels
@@ -632,7 +567,7 @@ configure_bot_channels() {
         --resource-group $RESOURCE_GROUP \
         --name $bot_name
     
-    log_info "Bot channels configured"
+    log_info "✓ Bot channels configured"
 }
 
 # Function to configure Teams app
@@ -650,7 +585,7 @@ configure_teams_app() {
     # Create Teams app manifest
     create_teams_manifest $teams_app_id
     
-    log_info "Teams application configured"
+    log_info "✓ Teams application configured"
 }
 
 # Function to create Teams manifest
@@ -710,13 +645,104 @@ create_teams_manifest() {
 }
 EOF
     
-    # Create placeholder icons (you should replace these with actual icons)
-    echo "Create actual icon files:" >> $OUTPUT_FILE
-    echo "  - $manifest_dir/color.png (192x192px)" >> $OUTPUT_FILE
-    echo "  - $manifest_dir/outline.png (32x32px)" >> $OUTPUT_FILE
-    echo "" >> $OUTPUT_FILE
+    # Create deployment instructions
+    cat > $manifest_dir/README.md << EOF
+# Teams App Deployment Instructions
+
+## Files Required
+- manifest.json (created automatically)
+- color.png (192x192px) - Create this icon
+- outline.png (32x32px) - Create this icon
+
+## Steps to Deploy
+1. Create the required icon files
+2. Create a ZIP file containing all three files
+3. Go to Teams Admin Center
+4. Navigate to Teams apps > Manage apps
+5. Click "Upload" and select your ZIP file
+6. Configure app permissions and policies
+
+## Icon Requirements
+- color.png: 192x192 pixels, color background
+- outline.png: 32x32 pixels, white outline on transparent background
+EOF
     
     log_info "Teams manifest created at $manifest_dir/manifest.json"
+}
+
+# Function to validate deployment
+validate_deployment() {
+    log_step "Validating deployment..."
+    
+    local validation_errors=0
+    
+    # Check if enterprise applications exist
+    local saml_app_name="$APP_PREFIX-$ENVIRONMENT-app-proxy-saml-app"
+    local proxy_app_name="$APP_PREFIX-$ENVIRONMENT-chat-proxy-app"
+    
+    # Check SAML enterprise application
+    local saml_sp=$(az ad sp list --display-name "$saml_app_name" --query "[0].id" -o tsv)
+    if [ ! -z "$saml_sp" ] && [ "$saml_sp" != "null" ]; then
+        log_info "✓ SAML enterprise application found"
+        
+        # Check SSO mode
+        local sso_mode=$(az ad sp show --id $saml_sp --query preferredSingleSignOnMode -o tsv)
+        if [ "$sso_mode" == "saml" ]; then
+            log_info "✓ SAML SSO mode correctly configured"
+        else
+            log_warn "⚠ SAML SSO mode is: $sso_mode (should be 'saml')"
+            validation_errors=$((validation_errors + 1))
+        fi
+    else
+        log_error "✗ SAML enterprise application not found"
+        validation_errors=$((validation_errors + 1))
+    fi
+    
+    # Check Application Proxy enterprise application
+    local proxy_sp=$(az ad sp list --display-name "$proxy_app_name" --query "[0].id" -o tsv)
+    if [ ! -z "$proxy_sp" ] && [ "$proxy_sp" != "null" ]; then
+        log_info "✓ Application Proxy enterprise application found"
+        
+        # Check SSO mode
+        local sso_mode=$(az ad sp show --id $proxy_sp --query preferredSingleSignOnMode -o tsv)
+        if [ "$sso_mode" == "integrated" ]; then
+            log_info "✓ Application Proxy SSO mode correctly configured"
+        else
+            log_warn "⚠ Application Proxy SSO mode is: $sso_mode (should be 'integrated')"
+            validation_errors=$((validation_errors + 1))
+        fi
+    else
+        log_error "✗ Application Proxy enterprise application not found"
+        validation_errors=$((validation_errors + 1))
+    fi
+    
+    # Check bot registration
+    local bot_name="$APP_PREFIX-$ENVIRONMENT-mahi-teams-bot"
+    local bot_exists=$(az bot show --resource-group $RESOURCE_GROUP --name $bot_name --query name -o tsv 2>/dev/null)
+    if [ ! -z "$bot_exists" ]; then
+        log_info "✓ Bot registration found"
+    else
+        log_error "✗ Bot registration not found"
+        validation_errors=$((validation_errors + 1))
+    fi
+    
+    # Check Teams app
+    local teams_app_name="$APP_PREFIX-$ENVIRONMENT-mahi-teams-app"
+    local teams_app_exists=$(az ad app list --display-name "$teams_app_name" --query "[0].appId" -o tsv)
+    if [ ! -z "$teams_app_exists" ] && [ "$teams_app_exists" != "null" ]; then
+        log_info "✓ Teams app registration found"
+    else
+        log_error "✗ Teams app registration not found"
+        validation_errors=$((validation_errors + 1))
+    fi
+    
+    if [ $validation_errors -eq 0 ]; then
+        log_info "✓ All resources validated successfully"
+        return 0
+    else
+        log_error "✗ Validation failed with $validation_errors errors"
+        return 1
+    fi
 }
 
 # Pre-flight checks
@@ -777,7 +803,57 @@ check_prerequisites() {
         az extension add --name botservice
     fi
     
-    log_info "Prerequisites check passed"
+    log_info "✓ Prerequisites check passed"
+}
+
+# Main deployment function
+deploy_resources() {
+    log_step "Starting Azure resource deployment..."
+    
+    # Initialize output file
+    init_output
+    
+    # Parse environment configuration
+    eval $(parse_yaml $ENVIRONMENT_FILE "env_")
+    
+    RESOURCE_GROUP=$env_environment_resource_group
+    LOCATION=$env_environment_location
+    APP_PREFIX=$env_environment_application_prefix
+    ENVIRONMENT=$env_environment_name
+    TENANT_ID=$env_environment_tenant_id
+    
+    log_info "Environment: $ENVIRONMENT"
+    log_info "Resource Group: $RESOURCE_GROUP"
+    log_info "Location: $LOCATION"
+    log_info "Tenant ID: $TENANT_ID"
+    log_info "App Prefix: $APP_PREFIX"
+    echo ""
+    
+    # Ask if user wants to clean up existing resources
+    if confirm_action "Do you want to clean up existing resources to prevent conflicts?"; then
+        cleanup_existing_resources
+    fi
+    
+    # Step 1: Create Resource Group
+    create_resource_group
+    
+    # Step 2: Create App Registrations
+    create_app_registrations
+    
+    # Step 3: Create Enterprise Applications
+    create_enterprise_applications
+    
+    # Step 4: Create Bot Registration
+    create_bot_registration
+    
+    # Step 5: Configure Teams App
+    configure_teams_app
+    
+    # Step 6: Validate Deployment
+    validate_deployment
+    
+    log_step "Deployment completed successfully!"
+    log_info "Check $OUTPUT_FILE for detailed output"
 }
 
 # Main execution
@@ -803,10 +879,11 @@ main() {
     echo "Check $OUTPUT_FILE for detailed information"
     echo ""
     echo "Next Steps:"
-    echo "1. Configure Application Proxy settings in Azure Portal"
+    echo "1. Go to Azure AD > Enterprise Applications to configure SAML and Application Proxy"
     echo "2. Upload Teams app manifest to Teams Admin Center"
     echo "3. Configure bot messaging endpoint in your application"
     echo "4. Test all applications and integrations"
+    echo "5. Run './validate_enterprise_apps.sh' to verify everything is working"
 }
 
 # Run main function
